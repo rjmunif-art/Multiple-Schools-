@@ -1,0 +1,1542 @@
+MASTER PROMPT — SEF SCHOOL OPERATOR APP
+
+Secure Account System + Google/Phone Login + Cloud Backup + Multi-Device Synchronization
+
+You are a senior full-stack engineer, authentication architect, database engineer and mobile application security specialist.
+
+I already have an existing Sindh Education Foundation (SEF) School Operator Management App built in Google AI Studio.
+
+I now want to add a complete, production-ready ACCOUNT, AUTHENTICATION, CLOUD DATA SYNC and MULTI-DEVICE RESTORE SYSTEM.
+
+IMPORTANT:
+
+Do NOT rebuild the application from scratch.
+
+Do NOT remove or break any existing feature.
+
+First inspect the complete existing project and understand:
+
+- Current database
+- Current local storage
+- Current authentication, if any
+- User/Operator model
+- School model
+- School-to-Operator relationships
+- Head Teacher accounts
+- Students
+- Teachers
+- Attendance
+- Leave records
+- Reports
+- AI Assistant
+- Settings
+- Existing backup/export functionality
+- Existing offline functionality
+
+Then integrate the new account and synchronization system into the existing architecture.
+
+---
+
+1. MAIN OBJECTIVE
+
+The application must allow an Operator or Head Teacher to create an account using either:
+
+OPTION A — Google Account
+
+Sign up / login using Google.
+
+OPTION B — Phone Number
+
+Sign up / login using a phone number and OTP verification.
+
+The account must be permanently associated with the user's cloud profile.
+
+The user's school-management data must belong to the ACCOUNT, not to the physical phone.
+
+Therefore:
+
+If an operator:
+
+1. Creates an account on Phone A.
+2. Adds schools, teachers, students, attendance and other records.
+3. Loses Phone A.
+4. Buys Phone B.
+5. Installs the app.
+6. Logs in using the SAME Google account or SAME verified phone number.
+
+Then:
+
+ALL authorised cloud data must automatically synchronize back to Phone B.
+
+The user should not have to recreate the schools or re-enter students and teachers.
+
+---
+
+2. ACCOUNT-FIRST ARCHITECTURE
+
+The fundamental architecture must be:
+
+USER ACCOUNT
+↓
+USER PROFILE
+↓
+ROLE
+↓
+OPERATOR / HEAD TEACHER
+↓
+AUTHORISED SCHOOL(S)
+↓
+SCHOOL DATA
+↓
+Students / Teachers / Attendance / Leaves / Reports / etc.
+
+Do NOT make the phone/device the owner of the data.
+
+A device is only a client connected to an account.
+
+Example:
+
+Account:
+operator@example.com
+
+Devices:
+
+Phone A
+Phone B
+Tablet
+
+All authorised devices access the same cloud account data.
+
+---
+
+3. AUTHENTICATION METHODS
+
+Implement two supported authentication methods.
+
+A. Google Sign-In
+
+Use secure Google OAuth/OIDC authentication through the appropriate supported authentication service.
+
+The application must:
+
+- Open the official Google sign-in flow.
+- Never request or store the user's Google password.
+- Receive a verified identity token/session from the authentication provider.
+- Create or locate the corresponding application account.
+- Sign the user into the app.
+- Load their authorised school data.
+
+Store a stable authentication/provider identifier rather than relying only on the user's display name.
+
+---
+
+4. PHONE NUMBER + OTP LOGIN
+
+Allow users to create an account using their mobile phone number.
+
+Flow:
+
+1. User selects "Continue with Phone".
+2. User enters phone number.
+3. Validate phone-number format.
+4. Send OTP using the configured authentication provider.
+5. User enters OTP.
+6. Authentication provider verifies OTP.
+7. Create or locate the account.
+8. Sign the user in.
+9. Load cloud data.
+
+Never store OTPs in plaintext.
+
+Never implement insecure custom OTP verification if the selected authentication provider already provides secure phone authentication.
+
+---
+
+5. PAKISTAN PHONE NUMBERS
+
+The application should support Pakistani numbers.
+
+Accept common formats such as:
+
+03XXXXXXXXX
+
+and
+
++923XXXXXXXXX
+
+Normalize them internally to a single canonical format, preferably E.164:
+
++923XXXXXXXXX
+
+Example:
+
+03001234567
+
+becomes:
+
++923001234567
+
+The database must not create two separate accounts because one login uses:
+
+03001234567
+
+and another uses:
+
++923001234567
+
+---
+
+6. ACCOUNT PROFILE
+
+Create an application-level user profile separate from the authentication provider.
+
+Suggested fields:
+
+user_id
+auth_provider
+google_uid/provider_uid
+phone_number
+email
+display_name
+photo_url
+role
+status
+created_at
+updated_at
+last_login_at
+
+Additional existing profile fields may be retained.
+
+Possible roles:
+
+- Operator
+- Head Teacher
+- Admin
+- Super Admin
+
+Do not allow users to select a privileged role themselves during signup.
+
+Role assignment must be controlled by the application/admin system.
+
+---
+
+7. OPERATOR ACCOUNT
+
+An Operator account can be associated with multiple schools.
+
+Example:
+
+Operator:
+Munif Ahmed
+
+Assigned schools:
+
+School A
+School B
+School C
+School D
+School E
+
+The operator's account should retrieve all authorised schools after login.
+
+Do not duplicate the operator's complete school data into separate accounts.
+
+Use relationships such as:
+
+operator_id → school_id
+
+or an appropriate many-to-many relationship if supported by the architecture.
+
+---
+
+8. HEAD TEACHER ACCOUNT
+
+A Head Teacher should normally be linked to one authorised school unless the existing application explicitly supports multiple schools.
+
+Example:
+
+Head Teacher Account
+↓
+School A
+↓
+Students
+Teachers
+Attendance
+Reports
+
+A Head Teacher must NEVER be able to access another school's data merely by changing a school ID in the app.
+
+All school permissions must be verified server-side.
+
+---
+
+9. ACCOUNT RECOVERY
+
+The account must not depend on the physical device.
+
+If the phone is:
+
+- Lost
+- Stolen
+- Factory reset
+- Replaced
+- Damaged
+
+the user must be able to install the application on another device and sign in again.
+
+After authentication:
+
+SHOW:
+
+"Your account has been found. Synchronizing your school data..."
+
+Then synchronize authorised cloud data.
+
+---
+
+10. MULTI-DEVICE SUPPORT
+
+A single account may be logged into multiple devices.
+
+Example:
+
+Phone A
+Phone B
+Tablet
+
+All devices can access the same account according to permissions.
+
+The system should maintain:
+
+device_id
+user_id
+device_name
+platform
+app_version
+last_active_at
+created_at
+last_sync_at
+
+Do NOT use device_id as the user's identity.
+
+---
+
+11. CLOUD DATABASE AS SOURCE OF TRUTH
+
+For account-owned school-management data:
+
+Cloud database = source of truth
+
+Local device storage = cached/offline copy.
+
+This is extremely important.
+
+Do not make local phone storage the permanent master database.
+
+When a user logs into a new device:
+
+Cloud data
+↓
+Download
+↓
+Local database/cache
+↓
+App becomes usable
+
+---
+
+12. OFFLINE-FIRST SUPPORT
+
+The application should continue to work when internet connectivity is temporarily unavailable where the existing app supports offline operation.
+
+Architecture:
+
+CLOUD DATABASE
+↕
+SYNC ENGINE
+↕
+LOCAL DATABASE / CACHE
+↕
+APP
+
+When offline:
+
+- Read available cached data.
+- Allow supported offline operations.
+- Queue changes locally.
+- Do not lose user changes.
+
+When internet returns:
+
+LOCAL PENDING CHANGES
+↓
+VALIDATE
+↓
+SYNC
+↓
+CLOUD
+↓
+CONFIRM
+↓
+MARK LOCAL CHANGE AS SYNCED
+
+---
+
+13. SYNC ENGINE
+
+Create a reliable synchronization engine.
+
+Each locally modified record should contain metadata such as:
+
+record_id
+user/account ownership
+school_id
+created_at
+updated_at
+deleted_at if applicable
+sync_status
+last_synced_at
+version/revision number
+
+Possible sync states:
+
+SYNCED
+PENDING_UPLOAD
+UPLOADING
+FAILED
+CONFLICT
+PENDING_DELETE
+
+The exact implementation should follow the existing database architecture.
+
+---
+
+14. FIRST LOGIN ON A NEW DEVICE
+
+When the user logs into a device for the first time:
+
+1. Authenticate.
+2. Verify account.
+3. Retrieve user profile.
+4. Retrieve roles.
+5. Retrieve authorised schools.
+6. Retrieve cloud data.
+7. Create/update local cache.
+8. Download required records.
+9. Show sync progress.
+10. Verify synchronization.
+11. Open the application.
+
+Example UI:
+
+"Welcome back, Munif Ahmed"
+
+"Account verified."
+
+"Your schools: 6"
+
+"Synchronizing school data..."
+
+Students: 1,245 / 1,245
+Teachers: 86 / 86
+Attendance: Synced
+Reports: Synced
+
+"Synchronization complete."
+
+---
+
+15. DO NOT DUPLICATE DATA DURING SYNC
+
+This is critical.
+
+Suppose the cloud already contains:
+
+Student GR:
+12345
+
+and the new phone downloads it.
+
+The app must NOT create another student.
+
+Use stable globally unique IDs.
+
+Do not use:
+
+student name
+
+as the primary identifier.
+
+Use proper IDs such as:
+
+student_id
+
+teacher_id
+
+school_id
+
+attendance_id
+
+etc.
+
+GR number may be used as a business identifier where appropriate, but it must not replace a stable database primary key unless the existing architecture explicitly requires it.
+
+---
+
+16. EXISTING LOCAL DATA MIGRATION
+
+The existing application may already contain data on the user's phone before account login is introduced.
+
+Do NOT automatically delete that data.
+
+When a user creates/signs into an account and local data exists:
+
+Show:
+
+"Existing local school data was found."
+
+Options:
+
+[Upload and Merge with Cloud]
+
+[Use Cloud Data]
+
+[Review Differences]
+
+Never silently overwrite either dataset.
+
+---
+
+17. SAFE MERGE SYSTEM
+
+If local and cloud records both exist, implement a controlled merge.
+
+Example:
+
+LOCAL:
+Student A
+GR: 1001
+
+CLOUD:
+Student A
+GR: 1001
+
+Recognize that these may represent the same record.
+
+Do not create duplicate records.
+
+Where records conflict:
+
+LOCAL:
+Mobile = 03000000000
+
+CLOUD:
+Mobile = 03111111111
+
+Show:
+
+"Conflict detected."
+
+Local value
+Cloud value
+
+[Keep Local]
+[Keep Cloud]
+
+For large conflicts:
+
+[Review Conflicts]
+
+Never silently overwrite important data.
+
+---
+
+18. CONFLICT RESOLUTION
+
+Implement conflict handling for simultaneous edits from multiple devices.
+
+Example:
+
+Phone A changes student grade.
+
+Phone B changes the same student's father's name.
+
+If changes affect different fields, merge safely where possible.
+
+If both devices modify the same field:
+
+Do not silently lose data.
+
+Use:
+
+- Version numbers
+- Updated timestamps
+- Change history
+- Conflict records
+- User confirmation where required
+
+For critical records such as attendance corrections, preserve an audit trail.
+
+---
+
+19. ATTENDANCE SYNCHRONIZATION
+
+Attendance is especially sensitive.
+
+Never simply overwrite attendance records during sync.
+
+Use unique attendance IDs and record metadata.
+
+Example:
+
+attendance_id
+school_id
+teacher_id/student_id
+date
+status
+created_by
+created_at
+updated_by
+updated_at
+version
+
+If an attendance record is corrected:
+
+preserve the original audit information.
+
+Example:
+
+Original:
+A
+
+Changed to:
+P
+
+Store:
+
+changed_by
+changed_at
+previous_value
+new_value
+reason if required
+
+---
+
+20. CLOUD BACKUP
+
+Every authenticated account should automatically have cloud backup.
+
+The user should not have to manually press "Backup" for normal synchronization.
+
+Whenever internet is available:
+
+New data
+↓
+Cloud synchronization
+↓
+Confirmation
+
+The app should show a small sync status indicator:
+
+✓ Synced
+
+⟳ Syncing
+
+⚠ Pending changes
+
+✕ Sync failed
+
+---
+
+21. MANUAL BACKUP OPTION
+
+Even though automatic synchronization exists, retain a manual backup option if compatible with the existing app.
+
+Settings:
+
+Cloud Sync
+Automatic Sync: ON/OFF where appropriate
+Last Sync
+Sync Now
+Backup
+Restore
+Export Data
+
+However:
+
+"Restore" must NOT blindly overwrite current data.
+
+Provide:
+
+Preview
+Merge
+Replace only with explicit confirmation
+
+---
+
+22. DATA OWNERSHIP
+
+All school data must have clear ownership and relationships.
+
+For example:
+
+User
+↓
+Operator
+↓
+School
+↓
+Students
+↓
+Attendance
+
+and:
+
+User
+↓
+Operator
+↓
+School
+↓
+Teachers
+↓
+Attendance
+
+The AI assistant must use these relationships when answering questions.
+
+Authentication alone is NOT sufficient authorization.
+
+Every database request must verify:
+
+authenticated user
+→ role
+→ authorised school
+→ requested record
+
+---
+
+23. SECURITY RULES
+
+Implement strict security.
+
+Never:
+
+- Store passwords yourself.
+- Store plaintext OTPs.
+- Store authentication tokens insecurely.
+- Trust school_id supplied by the frontend.
+- Trust role supplied by the frontend.
+- Allow arbitrary database queries from the client.
+- Expose API secrets.
+- Allow one operator to access another operator's schools.
+- Allow a Head Teacher to access another school.
+- Delete cloud data simply because a local record was deleted accidentally.
+
+Use secure authentication and server-side authorization.
+
+---
+
+24. LOGOUT
+
+When the user logs out:
+
+- Clear authentication session/token as appropriate.
+- Remove sensitive cached information where appropriate.
+- Do not delete cloud data.
+- Do not delete the user's account.
+- Do not delete school records.
+
+When they log in again:
+
+Cloud data must become available again.
+
+---
+
+25. DELETE ACCOUNT
+
+Add a controlled account deletion mechanism only if appropriate.
+
+If the user requests account deletion:
+
+Show a serious warning.
+
+Example:
+
+"Deleting your account may affect access to your school-management data."
+
+Require explicit confirmation.
+
+Do not immediately destroy important school records if those records belong to an organisation rather than exclusively to the individual.
+
+Use appropriate organisational ownership rules.
+
+---
+
+26. CHANGE PHONE NUMBER
+
+The user may change their phone number.
+
+If phone authentication is used:
+
+1. Verify the old authenticated session where required.
+2. Verify the new phone number using OTP.
+3. Update the account's verified phone.
+4. Keep the same user_id.
+5. Keep all school relationships.
+6. Keep all cloud data.
+7. Sign in normally using the new verified number.
+
+IMPORTANT:
+
+Changing a phone number must NOT create a new school account.
+
+Example:
+
+OLD:
++923001111111
+
+NEW:
++923002222222
+
+Same:
+
+user_id
+schools
+students
+teachers
+attendance
+reports
+permissions
+history
+
+---
+
+27. GOOGLE + PHONE ACCOUNT LINKING
+
+This is a very important feature.
+
+A user may initially register with:
+
+Google Account
+
+and later add:
+
+Phone Number
+
+OR initially register with:
+
+Phone Number
+
+and later link:
+
+Google Account.
+
+The system must allow verified authentication methods to be linked to the SAME application account.
+
+Example:
+
+Application Account:
+USER-12345
+
+Authentication methods:
+
+Google: verified
+Phone: +923001234567 verified
+
+Logging in with either method must open:
+
+USER-12345
+
+NOT create:
+
+USER-67890
+
+Therefore implement account-linking using the authentication provider's supported secure account-linking mechanism.
+
+Do not identify accounts only by email or phone number.
+
+Use the authentication provider's stable identifiers plus the application's user_id.
+
+---
+
+28. ACCOUNT LINKING SAFETY
+
+If a Google account and phone number already belong to different application accounts:
+
+DO NOT automatically merge them.
+
+Show:
+
+"These login methods are already associated with different accounts."
+
+Provide a controlled account recovery/linking workflow.
+
+Require strong verification before merging accounts.
+
+Never allow an unauthenticated user to claim another user's school data.
+
+---
+
+29. DATA SYNC WITH THE AI ASSISTANT
+
+The AI Assistant must operate on cloud-authorised data.
+
+After login:
+
+AI Assistant
+↓
+Authenticated user
+↓
+Authorised schools
+↓
+Actual database
+↓
+Analysis
+
+The AI must never use stale local data if newer cloud data is available.
+
+Before important analysis, ensure the local cache is synchronized or clearly indicate that the displayed result is based on cached/offline data.
+
+---
+
+30. SYNC STATUS IN AI ASSISTANT
+
+The AI assistant should know the current sync state.
+
+If data has not synchronized:
+
+Example:
+
+"Your device has 12 pending attendance changes that have not yet synchronized to the cloud. The following analysis is based on the current local data."
+
+Do not pretend the cloud contains changes that have not been uploaded.
+
+---
+
+31. NEW DEVICE SECURITY
+
+When a user signs in on a new device:
+
+Optionally display:
+
+"New device signed in"
+
+Device:
+Android Phone
+
+Time:
+3 November 2026
+
+Allow the user to view active devices.
+
+Settings:
+
+Security
+→ Active Devices
+
+Display:
+
+Device name
+Platform
+Last active
+Last sync
+
+Allow:
+
+[Sign out this device]
+
+[Sign out all other devices]
+
+---
+
+32. SESSION SECURITY
+
+Use secure authentication sessions.
+
+Implement:
+
+- Token expiration.
+- Secure token refresh.
+- Automatic session renewal where supported.
+- Logout.
+- Reauthentication for sensitive operations.
+- Protection against token theft.
+- Secure storage appropriate to the platform.
+
+Do not store long-lived sensitive tokens in ordinary plaintext local storage.
+
+---
+
+33. SYNC PERFORMANCE
+
+The application may contain thousands of:
+
+- Students
+- Teachers
+- Attendance records
+- School records
+
+Therefore do NOT download the entire database every time the app opens.
+
+Implement incremental synchronization.
+
+Example:
+
+First login:
+Download required initial dataset.
+
+Later:
+
+last_sync_version = 10245
+
+Server:
+
+changes after version 10245
+
+Download only changed records.
+
+Use:
+
+- Updated timestamps
+- Version numbers
+- Change tokens
+- Sync cursors
+
+according to the existing backend architecture.
+
+---
+
+34. LARGE DATA OPTIMIZATION
+
+Use:
+
+- Pagination
+- Incremental sync
+- Lazy loading
+- Local caching
+- Indexed database queries
+- Compression where appropriate
+- Background synchronization
+
+Do not freeze the UI while synchronizing thousands of records.
+
+Show progress.
+
+Allow the user to continue using the app where safe.
+
+---
+
+35. NETWORK FAILURE
+
+If synchronization fails:
+
+Do NOT delete local data.
+
+Do NOT show "Synced."
+
+Show:
+
+"12 changes are waiting to sync."
+
+Automatically retry when connectivity returns.
+
+Use safe retry mechanisms and idempotent operations.
+
+Never create duplicates because the same synchronization request was retried.
+
+---
+
+36. DATA EXPORT
+
+Allow users with appropriate permissions to export their authorised data.
+
+Formats:
+
+Excel
+CSV
+PDF
+JSON backup where appropriate
+
+Exports must respect school permissions.
+
+An operator should be able to export:
+
+- One school
+- Multiple schools
+- Selected modules
+
+A Head Teacher should only export authorised school data.
+
+---
+
+37. ACCOUNT SETTINGS
+
+Add:
+
+Account
+
+Name
+Email
+Phone
+Profile photo
+Role
+
+Security
+
+Login methods
+Linked Google account
+Verified phone
+Active devices
+Logout
+Logout all other devices
+
+Synchronization
+
+Cloud Sync
+Last successful sync
+Pending changes
+Sync Now
+Sync errors
+
+Data
+
+Export
+Backup
+Restore/Merge
+Storage usage
+
+---
+
+38. UI DESIGN
+
+Maintain the existing app's design language.
+
+Add a professional Account/Profile area.
+
+Login screen:
+
+SEF School Management
+
+[ Continue with Google ]
+
+OR
+
+[ Continue with Phone ]
+
+Phone:
+
++92 __________
+
+[ Send OTP ]
+
+OTP:
+
+---
+
+[ Verify ]
+
+Do not make the login interface unnecessarily complicated.
+
+---
+
+39. FIRST-TIME USER FLOW
+
+For a completely new user:
+
+Install app
+↓
+Welcome
+↓
+Create account / Login
+↓
+Choose Google or Phone
+↓
+Authentication
+↓
+Role/account setup
+↓
+Operator/Head Teacher verification if required
+↓
+School assignment
+↓
+Create/select school data if authorised
+↓
+Dashboard
+
+Do not allow a random user to claim an existing SEF school simply by entering its name.
+
+---
+
+40. EXISTING OPERATOR MIGRATION
+
+If the current application already has operators and school data without authentication:
+
+Implement a migration process.
+
+Example:
+
+Existing local operator data
+↓
+User signs in
+↓
+Verify operator identity
+↓
+Associate existing data with user_id
+↓
+Upload to cloud
+↓
+Verify
+↓
+Mark migration complete
+
+Do NOT create duplicate schools.
+
+Do NOT upload another operator's data.
+
+If identity cannot be safely established:
+
+Ask for administrator verification instead of guessing.
+
+---
+
+41. DATABASE MIGRATION
+
+Before modifying the database:
+
+Inspect the existing schema.
+
+Create a proper migration plan.
+
+Add required fields/tables such as:
+
+users
+authentication_methods
+user_roles
+operator_school_assignments
+devices
+sync_state
+sync_changes
+audit_logs
+
+Only create tables that are actually necessary.
+
+Do not duplicate existing entities.
+
+Use foreign keys and indexes where supported.
+
+Ensure migrations are backward compatible where possible.
+
+---
+
+42. AUDIT LOG
+
+Maintain an audit log for important account and data operations.
+
+Examples:
+
+Login
+Logout
+New device
+Google linked
+Phone linked
+Phone changed
+Student imported
+Teacher imported
+Attendance changed
+Record deleted/archived
+Bulk import
+Account permission change
+
+Include:
+
+user_id
+action
+school_id where applicable
+record_id where applicable
+timestamp
+device_id where appropriate
+
+Never store passwords, OTPs or sensitive authentication secrets in audit logs.
+
+---
+
+43. ACCOUNT DELETION VS DATA DELETION
+
+These are different operations.
+
+Deleting a user's login account must not automatically mean:
+
+"Delete every student in the school."
+
+School records may belong to the organisation/school rather than an individual operator.
+
+Implement organisational ownership correctly.
+
+---
+
+44. TESTING REQUIREMENTS
+
+Before declaring the feature complete, perform all of the following tests.
+
+TEST 1
+
+Create account with Google.
+
+Logout.
+
+Login again.
+
+Verify all data remains.
+
+TEST 2
+
+Create account with phone + OTP.
+
+Logout.
+
+Login again.
+
+Verify all data remains.
+
+TEST 3
+
+Login on Phone A.
+
+Create student.
+
+Login on Phone B using the same account.
+
+Verify student appears.
+
+TEST 4
+
+Create teacher on Phone B.
+
+Return to Phone A.
+
+Verify teacher synchronizes.
+
+TEST 5
+
+Change phone number.
+
+Logout.
+
+Login using new number.
+
+Verify SAME account and SAME data.
+
+TEST 6
+
+Link Google to phone account.
+
+Logout.
+
+Login using Google.
+
+Verify SAME account.
+
+TEST 7
+
+Link phone to Google account.
+
+Logout.
+
+Login using phone.
+
+Verify SAME account.
+
+TEST 8
+
+Upload existing local data.
+
+Verify no duplicates.
+
+TEST 9
+
+Simulate offline mode.
+
+Create records.
+
+Reconnect.
+
+Verify changes synchronize.
+
+TEST 10
+
+Interrupt synchronization.
+
+Verify data is not lost.
+
+TEST 11
+
+Repeat the same sync operation.
+
+Verify no duplicate records.
+
+TEST 12
+
+Login as Head Teacher.
+
+Attempt another school's data.
+
+Verify access is denied.
+
+TEST 13
+
+Login as Operator.
+
+Verify only assigned schools are available.
+
+TEST 14
+
+Change data simultaneously from two devices.
+
+Verify conflict handling.
+
+TEST 15
+
+Install app on a completely new device.
+
+Login.
+
+Verify cloud data restoration.
+
+TEST 16
+
+Uninstall and reinstall app.
+
+Login.
+
+Verify cloud data remains.
+
+TEST 17
+
+Logout.
+
+Verify sensitive cached/session data is appropriately protected.
+
+TEST 18
+
+Test account linking where Google and phone already belong to different accounts.
+
+Verify that automatic unsafe merging does NOT occur.
+
+---
+
+45. FINAL REQUIREMENT
+
+The final architecture must behave like this:
+
+             ┌───────────────────┐
+             │   USER ACCOUNT    │
+             └─────────┬─────────┘
+                       │
+         ┌─────────────┴─────────────┐
+         │                           │
+   Google Login                 Phone + OTP
+         │                           │
+         └─────────────┬─────────────┘
+                       │
+                APPLICATION USER
+                       │
+                 ROLE / ACCESS
+                       │
+         ┌─────────────┴─────────────┐
+         │                           │
+      OPERATOR                 HEAD TEACHER
+         │                           │
+   Multiple Schools              School
+         │                           │
+         └─────────────┬─────────────┘
+                       │
+                 CLOUD DATABASE
+                       │
+                SYNC ENGINE
+                       │
+         ┌─────────────┴─────────────┐
+         │                           │
+      PHONE A                    PHONE B
+         │                           │
+   Local Cache                 Local Cache
+
+The physical phone is NEVER the permanent owner of the school data.
+
+The authenticated application account is the identity.
+
+The cloud database is the persistent source of truth.
+
+Local storage is a synchronized cache/offline workspace.
+
+---
+
+FINAL IMPLEMENTATION INSTRUCTION
+
+First inspect my entire existing Google AI Studio project.
+
+Do not immediately rewrite the application.
+
+Identify the current:
+
+- Authentication
+- Database
+- Local storage
+- User model
+- School model
+- Operator model
+- Head Teacher model
+- Student model
+- Teacher model
+- Attendance model
+- Existing backup system
+- Existing AI assistant
+
+Then design the safest integration.
+
+Implement:
+
+1. Google authentication.
+2. Phone + OTP authentication.
+3. Application user profiles.
+4. Role-based access.
+5. Operator-school relationships.
+6. Head Teacher-school relationships.
+7. Cloud persistence.
+8. Automatic synchronization.
+9. Offline queue.
+10. Incremental synchronization.
+11. Multi-device support.
+12. Account recovery.
+13. Google/phone account linking.
+14. Phone-number change.
+15. Existing local-data migration.
+16. Duplicate prevention.
+17. Conflict resolution.
+18. Sync status.
+19. Active-device management.
+20. Audit logging.
+21. Secure logout.
+22. Data export.
+23. Complete testing.
+
+Do not use mock data.
+
+Do not use fake authentication.
+
+Do not store passwords yourself.
+
+Do not hardcode user accounts.
+
+Do not trust frontend permissions.
+
+Do not allow cross-school data access.
+
+Do not silently overwrite cloud data.
+
+Do not silently merge different accounts.
+
+Do not claim synchronization succeeded until the server confirms it.
+
+If a required backend service, Firebase configuration, OAuth configuration, database migration, or environment variable is required, identify it clearly and implement everything possible in the project without inventing credentials.
+
+The final result must be production-ready, secure, scalable, recoverable and suitable for an SEF multi-school management application.

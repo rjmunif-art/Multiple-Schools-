@@ -1,0 +1,6 @@
+{
+  "name": "SEF School Operator",
+  "description": "Offline-first Multi-School Operator Control Center for Sindh Education Foundation (SEF) partner schools with role-based access, student & staff records, attendance, examinations, visits, payroll, and cloud synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

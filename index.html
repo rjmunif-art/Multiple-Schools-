@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SEF School Operator - Multi-School Management</title>
+    <meta name="description" content="Offline-first Multi-School Operator Control Center for Sindh Education Foundation (SEF) partner schools." />
+    <meta name="theme-color" content="#047857" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="SEF Operator" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta property="og:title" content="SEF School Operator - Multi-School Management" />
+    <meta property="og:description" content="Offline-first Multi-School Operator Control Center for Sindh Education Foundation (SEF) partner schools." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // Gracefully prevent benign Vite dev WebSocket HMR errors in AI Studio iframe environment
+      (function() {
+        const NativeWebSocket = window.WebSocket;
+
+        class ViteHmrWebSocket extends EventTarget {
+          static CONNECTING = 0;
+          static OPEN = 1;
+          static CLOSING = 2;
+          static CLOSED = 3;
+
+          constructor(url, protocols) {
+            super();
+            this.url = String(url || '');
+            this.protocol = Array.isArray(protocols) ? protocols[0] : (protocols || 'vite-hmr');
+            this.readyState = 0; // CONNECTING
+            this.binaryType = 'blob';
+            this.bufferedAmount = 0;
+            this.extensions = '';
+            this.onopen = null;
+            this.onclose = null;
+            this.onerror = null;
+            this.onmessage = null;
+
+            // Immediately simulate successful connection on next microtask
+            Promise.resolve().then(() => {
+              if (this.readyState === 0) {
+                this.readyState = 1; // OPEN
+                const openEv = new Event('open');
+                this.dispatchEvent(openEv);
+                if (typeof this.onopen === 'function') {
+                  this.onopen(openEv);
+                }
+              }
+            });
+          }
+
+          send(data) {
+            // No-op for ping / dev requests when HMR is disabled
+          }
+
+          close(code, reason) {
+            if (this.readyState === 3) return;
+            this.readyState = 3; // CLOSED
+            const closeEv = new CloseEvent('close', {
+              code: code || 1000,
+              reason: reason || 'Normal closure',
+              wasClean: true,
+            });
+            this.dispatchEvent(closeEv);
+            if (typeof this.onclose === 'function') {
+              this.onclose(closeEv);
+            }
+          }
+        }
+
+        // Assign static constants
+        ViteHmrWebSocket.CONNECTING = 0;
+        ViteHmrWebSocket.OPEN = 1;
+        ViteHmrWebSocket.CLOSING = 2;
+        ViteHmrWebSocket.CLOSED = 3;
+
+        // Proxy WebSocket constructor
+        function ProxiedWebSocket(url, protocols) {
+          const isViteHmr =
+            protocols === 'vite-hmr' ||
+            (Array.isArray(protocols) && protocols.includes('vite-hmr')) ||
+            (typeof url === 'string' && (url.includes('vite-hmr') || url.includes('token=') || url.includes('/@vite/')));
+
+          if (isViteHmr) {
+            return new ViteHmrWebSocket(url, protocols);
+          }
+          return new NativeWebSocket(url, protocols);
+        }
+
+        ProxiedWebSocket.CONNECTING = 0;
+        ProxiedWebSocket.OPEN = 1;
+        ProxiedWebSocket.CLOSING = 2;
+        ProxiedWebSocket.CLOSED = 3;
+        ProxiedWebSocket.prototype = NativeWebSocket ? NativeWebSocket.prototype : Object.prototype;
+        window.WebSocket = ProxiedWebSocket;
+
+        // Catch and suppress any stray console or unhandled rejection errors regarding Vite WebSockets
+        const origConsoleError = console.error;
+        console.error = function(...args) {
+          if (
+            args.some(
+              (arg) =>
+                typeof arg === 'string' &&
+                (arg.includes('WebSocket') || arg.includes('[vite]') || arg.includes('ws://') || arg.includes('wss://'))
+            )
+          ) {
+            return;
+          }
+          origConsoleError.apply(console, args);
+        };
+
+        window.addEventListener('error', function (event) {
+          if (
+            event &&
+            event.message &&
+            (event.message.includes('WebSocket') || event.message.includes('ws://') || event.message.includes('wss://'))
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function (event) {
+          const reasonMsg = event && event.reason ? (event.reason.message || String(event.reason)) : '';
+          if (
+            reasonMsg.includes('WebSocket') ||
+            reasonMsg.includes('ws://') ||
+            reasonMsg.includes('wss://') ||
+            reasonMsg.includes('[vite]')
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

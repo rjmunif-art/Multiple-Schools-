@@ -1,0 +1,53 @@
+[
+  {
+    "id": "sec-log-1793714377531-itvt",
+    "userId": "system",
+    "userName": "Email Gateway",
+    "action": "otp_dispatch",
+    "details": "Generated OTP verification code for email new.operator@sefpartner.org.pk",
+    "timestamp": "2026-11-03T13:59:37.531Z"
+  },
+  {
+    "id": "sec-log-1793714347780-brdm",
+    "userId": "system",
+    "userName": "SMS Gateway",
+    "action": "otp_dispatch",
+    "details": "Generated OTP verification code for mobile number +923009876543",
+    "timestamp": "2026-11-03T13:59:07.780Z"
+  },
+  {
+    "id": "sec-log-1793714328145-o813",
+    "userId": "system",
+    "userName": "Email Gateway",
+    "action": "otp_dispatch",
+    "details": "Generated OTP verification code for email test.operator@sefpartner.org.pk",
+    "timestamp": "2026-11-03T13:58:48.145Z"
+  },
+  {
+    "id": "sec-log-1793700270368-7pxn",
+    "userId": "user-op-1",
+    "userName": "Muhammad Saleh Mangi",
+    "action": "login_google",
+    "details": "Logged in via Google (saleh.mangi@sefpartner.org.pk)",
+    "deviceId": "dev-tablet-1",
+    "timestamp": "2026-11-03T10:04:30.368Z"
+  },
+  {
+    "id": "sec-log-1793700257476-ymj7",
+    "userId": "usr-ph-1793700257459",
+    "userName": "Test Operator",
+    "action": "login_phone",
+    "details": "Created account and logged in via verified phone +923009988776",
+    "deviceId": "dev-mobile-b",
+    "timestamp": "2026-11-03T10:04:17.476Z"
+  },
+  {
+    "id": "sec-log-1793700247577-4k0w",
+    "userId": "usr-ph-1793700247561",
+    "userName": "Test Operator",
+    "action": "login_phone",
+    "details": "Created account and logged in via verified phone +923001234567",
+    "deviceId": "dev-mobile-b",
+    "timestamp": "2026-11-03T10:04:07.577Z"
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "deviceId": "dev-mobile-b",
+    "userId": "usr-ph-1793700247561",
+    "deviceName": "Samsung Galaxy A54",
+    "platform": "Android Mobile",
+    "appVersion": "3.5.0",
+    "lastActiveAt": "2026-11-03T10:04:07.576Z",
+    "lastSyncAt": "2026-11-03T10:04:07.576Z",
+    "createdAt": "2026-11-03T10:04:07.576Z"
+  },
+  {
+    "deviceId": "dev-mobile-b",
+    "userId": "usr-ph-1793700257459",
+    "deviceName": "Samsung Galaxy A54",
+    "platform": "Android Mobile",
+    "appVersion": "3.5.0",
+    "lastActiveAt": "2026-11-03T10:04:17.475Z",
+    "lastSyncAt": "2026-11-03T10:04:17.475Z",
+    "createdAt": "2026-11-03T10:04:17.475Z"
+  },
+  {
+    "deviceId": "dev-tablet-1",
+    "userId": "user-op-1",
+    "deviceName": "iPad Pro",
+    "platform": "Apple iOS",
+    "appVersion": "3.5.0",
+    "lastActiveAt": "2026-11-03T10:04:30.368Z",
+    "lastSyncAt": "2026-11-03T10:04:30.368Z",
+    "createdAt": "2026-11-03T10:04:30.368Z"
+  }
+]

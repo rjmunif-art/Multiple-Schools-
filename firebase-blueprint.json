@@ -1,0 +1,54 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with Firebase Auth Google identity details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string" },
+        "organizationName": { "type": "string" },
+        "phone": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "lastLoginAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "UserDatabase": {
+      "title": "UserDatabase",
+      "description": "User multi-device synchronized school database snapshot",
+      "type": "object",
+      "properties": {
+        "schools": { "type": "array" },
+        "students": { "type": "array" },
+        "staff": { "type": "array" },
+        "studentAttendance": { "type": "array" },
+        "staffAttendance": { "type": "array" },
+        "examinations": { "type": "array" },
+        "examMarks": { "type": "array" },
+        "payroll": { "type": "array" },
+        "visits": { "type": "array" },
+        "issues": { "type": "array" },
+        "tasks": { "type": "array" },
+        "documents": { "type": "array" },
+        "notifications": { "type": "array" },
+        "settings": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Authenticated user profile documents"
+    },
+    "/users/{userId}/data/{dataId}": {
+      "schema": { "$ref": "#/entities/UserDatabase" },
+      "description": "User's synchronized schools, students, teachers, and attendance records"
+    }
+  }
+}

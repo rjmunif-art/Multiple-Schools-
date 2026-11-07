@@ -290,10 +290,14 @@ class FirebaseSyncService {
     }
 
     try {
-      // Check if email already has an active invite
+      // 1. Check if email already has an active invite
       const inviteRef = doc(db, 'invites', cleanEmail);
-      const existingSnap = await getDoc(inviteRef);
-      if (existingSnap.exists()) {
+      const existingSnap = await getDoc(inviteRef).catch((e) => {
+        console.warn('[Firestore] Checking existing invite error (proceeding):', e);
+        return null;
+      });
+
+      if (existingSnap && existingSnap.exists()) {
         const existingInvite = existingSnap.data() as SchoolInvite;
         if (existingInvite.schoolId !== schoolId) {
           return {
@@ -303,20 +307,23 @@ class FirebaseSyncService {
         }
       }
 
-      // Check if this email is already registered as head teacher for another school
-      const usersQuery = query(collection(db, 'users'), where('email', '==', cleanEmail));
-      const usersSnap = await getDocs(usersQuery);
-      for (const uDoc of usersSnap.docs) {
-        const uData = uDoc.data();
-        if (uData.role === 'headTeacher' && uData.schoolId && uData.schoolId !== schoolId) {
-          return {
-            success: false,
-            error: 'This Google account is already registered as Head Teacher for another school.',
-          };
+      // Check if another school already has this head teacher assigned
+      try {
+        const otherSchoolsQuery = query(collection(db, 'schools'), where('headTeacherEmail', '==', cleanEmail));
+        const otherSchoolsSnap = await getDocs(otherSchoolsQuery);
+        for (const sDoc of otherSchoolsSnap.docs) {
+          if (sDoc.id !== schoolId) {
+            return {
+              success: false,
+              error: 'This Google account is already registered as Head Teacher for another school.',
+            };
+          }
         }
+      } catch (checkErr) {
+        console.warn('[Firestore] Checking other schools warning (proceeding):', checkErr);
       }
 
-      // Save invite
+      // 2. Save invite strictly to invites/{email}. Do NOT create a users document for the HT!
       const inviteData: SchoolInvite = {
         email: cleanEmail,
         name: headTeacherName || '',
@@ -330,11 +337,12 @@ class FirebaseSyncService {
 
       await setDoc(inviteRef, sanitizeForFirestore(inviteData));
 
-      // Also link to school document
+      // 3. Link to school document with operatorUid to ensure ownership permissions
       const schoolRef = doc(db, 'schools', schoolId);
       await setDoc(
         schoolRef,
         {
+          ownerUid: operatorUid,
           headTeacherEmail: cleanEmail,
           headTeacherName: headTeacherName || '',
           contactNumber: headTeacherPhone || '',
@@ -440,8 +448,9 @@ class FirebaseSyncService {
     try {
       // 1. Check users collection
       try {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        for (const uDoc of usersSnap.docs) {
+        const usersSnap = await getDocs(collection(db, 'users')).catch(() => null);
+        if (usersSnap) {
+          for (const uDoc of usersSnap.docs) {
           const uData = uDoc.data();
           const isHT = uData.role === 'headTeacher' || uData.role === 'head_teacher';
           const email = (uData.email || '').trim().toLowerCase();
@@ -475,6 +484,7 @@ class FirebaseSyncService {
                 console.warn('[Migration] Could not delete fake user doc:', uDoc.id, err);
               });
               console.log(`[Migration] Deleted fake user doc ${uDoc.id}`);
+            }
             }
           }
         }

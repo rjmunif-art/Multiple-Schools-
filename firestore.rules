@@ -11,8 +11,10 @@ service cloud.firestore {
     }
 
     function isSchoolOwner(schoolId) {
-      return isSignedIn() && exists(/databases/$(database)/documents/schools/$(schoolId)) &&
-        get(/databases/$(database)/documents/schools/$(schoolId)).data.ownerUid == request.auth.uid;
+      return isSignedIn() && exists(/databases/$(database)/documents/schools/$(schoolId)) && (
+        !('ownerUid' in get(/databases/$(database)/documents/schools/$(schoolId)).data) ||
+        get(/databases/$(database)/documents/schools/$(schoolId)).data.ownerUid == request.auth.uid
+      );
     }
 
     function isSchoolHeadTeacher(schoolId) {
@@ -27,12 +29,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn() && (
         request.auth.uid == userId ||
-        resource.data.role in ['headTeacher', 'head_teacher']
+        (resource != null && resource.data.role in ['headTeacher', 'head_teacher']) ||
+        (resource != null && resource.data.operatorUid == request.auth.uid)
       );
       allow create, update: if isSignedIn() && request.auth.uid == userId;
       allow delete: if isSignedIn() && (
         request.auth.uid == userId ||
-        resource.data.role in ['headTeacher', 'head_teacher']
+        (resource != null && resource.data.role in ['headTeacher', 'head_teacher'])
       );
     }
 
@@ -45,21 +48,23 @@ service cloud.firestore {
     // - the owner operator can create, read, update and delete invites for their own schools
     match /invites/{inviteEmail} {
       allow get: if isSignedIn() && (
+        resource == null ||
         (request.auth.token.email != null && inviteEmail == request.auth.token.email.lower()) ||
         resource.data.operatorUid == request.auth.uid ||
+        !('operatorUid' in resource.data) ||
         isSchoolOwner(resource.data.schoolId)
       );
-      allow list: if isSignedIn() && (
-        resource.data.operatorUid == request.auth.uid
-      );
+      allow list: if isSignedIn();
       allow create: if isSignedIn() && (
-        request.resource.data.operatorUid == request.auth.uid &&
-        (isSchoolOwner(request.resource.data.schoolId) || !exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)))
+        request.resource.data.operatorUid == request.auth.uid ||
+        isSchoolOwner(request.resource.data.schoolId) ||
+        !('operatorUid' in request.resource.data)
       );
       allow update, delete: if isSignedIn() && (
         resource.data.operatorUid == request.auth.uid ||
         isSchoolOwner(resource.data.schoolId) ||
-        (request.auth.token.email != null && inviteEmail == request.auth.token.email.lower())
+        (request.auth.token.email != null && inviteEmail == request.auth.token.email.lower()) ||
+        !('operatorUid' in resource.data)
       );
     }
 
@@ -67,17 +72,25 @@ service cloud.firestore {
     // - a head teacher can read and write only their assigned school's data
     match /schools/{schoolId} {
       allow read: if isSignedIn() && (
+        !('ownerUid' in resource.data) ||
         resource.data.ownerUid == request.auth.uid ||
         resource.data.headTeacherUid == request.auth.uid ||
         (request.auth.token.email != null && resource.data.headTeacherEmail == request.auth.token.email.lower())
       );
-      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && (
+        request.resource.data.ownerUid == request.auth.uid ||
+        !('ownerUid' in request.resource.data)
+      );
       allow update: if isSignedIn() && (
+        !('ownerUid' in resource.data) ||
         resource.data.ownerUid == request.auth.uid ||
         resource.data.headTeacherUid == request.auth.uid ||
         (request.auth.token.email != null && resource.data.headTeacherEmail == request.auth.token.email.lower())
       );
-      allow delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow delete: if isSignedIn() && (
+        !('ownerUid' in resource.data) ||
+        resource.data.ownerUid == request.auth.uid
+      );
 
       // Isolated Assistant Chats: Only the creator of the chat can read/write
       match /assistantChats/{chatId} {

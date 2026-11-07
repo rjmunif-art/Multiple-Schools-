@@ -8,7 +8,7 @@ import { GlobalSearchModal } from './components/common/GlobalSearchModal';
 import { PhotoDocumentViewer } from './components/common/PhotoDocumentViewer';
 import { HeadTeacherAIAssistantModal } from './components/ai/HeadTeacherAIAssistantModal';
 import { EditProfileModal } from './components/common/EditProfileModal';
-import { Sparkles, School as SchoolIcon, Loader2 } from 'lucide-react';
+import { Sparkles, School as SchoolIcon, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 import { OperatorDashboard } from './components/dashboard/OperatorDashboard';
 import { SchoolDirectory } from './components/schools/SchoolDirectory';
@@ -27,10 +27,21 @@ import { UserCredentialsManager } from './components/auth/UserCredentialsManager
 import { SettingsManager } from './components/settings/SettingsManager';
 import { PullToRefresh } from './components/common/PullToRefresh';
 
+import { OperatorProfileSetup } from './components/auth/OperatorProfileSetup';
+import { HeadTeacherProfileSetup } from './components/auth/HeadTeacherProfileSetup';
+
 const AppContent: React.FC = () => {
   const {
     currentUser,
     isAuthLoading,
+    authStatus,
+    pendingFirebaseUser,
+    pendingInvite,
+    authError,
+    retryAuth,
+    completeOperatorSetup,
+    completeHeadTeacherSetup,
+    logout,
     currentTab,
     isAIAssistantOpen,
     setIsAIAssistantOpen,
@@ -39,8 +50,38 @@ const AppContent: React.FC = () => {
     editingTargetUser,
   } = useApp();
 
+  // Error screen when Firestore read or verification fails (never default to operator silently)
+  if (authStatus === 'auth_error') {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-center select-none">
+        <div className="w-16 h-16 rounded-3xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mb-4">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <h2 className="text-lg font-bold text-white mb-2">Account Verification Error</h2>
+        <p className="text-xs text-rose-300 max-w-sm mb-6 bg-rose-950/40 p-3 rounded-2xl border border-rose-800/60 font-mono leading-relaxed">
+          {authError || 'An error occurred while verifying your Google account credentials.'}
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => retryAuth()}
+            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition flex items-center gap-2 cursor-pointer active:scale-98"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Retry</span>
+          </button>
+          <button
+            onClick={logout}
+            className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition cursor-pointer"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // If checking authentication state, show smooth loading spinner (no login screen flash)
-  if (isAuthLoading) {
+  if (isAuthLoading || authStatus === 'loading') {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-center select-none">
         <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-2xl shadow-emerald-950/60 border border-emerald-400/40 mb-4 animate-pulse">
@@ -57,8 +98,31 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // If new Head Teacher with pending invite -> show Head Teacher Profile Setup
+  if (authStatus === 'needs_head_teacher_setup' && pendingFirebaseUser && pendingInvite) {
+    return (
+      <HeadTeacherProfileSetup
+        firebaseUser={pendingFirebaseUser}
+        invite={pendingInvite}
+        onComplete={completeHeadTeacherSetup}
+        onSignOut={logout}
+      />
+    );
+  }
+
+  // If new Operator without completed profile -> show Operator Profile Setup
+  if (authStatus === 'needs_operator_setup' && pendingFirebaseUser) {
+    return (
+      <OperatorProfileSetup
+        firebaseUser={pendingFirebaseUser}
+        onComplete={completeOperatorSetup}
+        onSignOut={logout}
+      />
+    );
+  }
+
   // If not authenticated, show the Google Sign-In auth screen
-  if (!currentUser) {
+  if (!currentUser || authStatus === 'unauthenticated') {
     return <AuthScreen />;
   }
 

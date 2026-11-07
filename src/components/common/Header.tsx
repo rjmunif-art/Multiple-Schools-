@@ -115,35 +115,29 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Sync indicator */}
+            {/* Sync status badge & manual sync fallback */}
             <button
               onClick={() => syncNow()}
-              disabled={syncState === 'syncing' || !isOnline || isSimulatedOffline}
-              className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 transition cursor-pointer disabled:cursor-not-allowed"
-              title="Click to manually sync data with cloud"
+              disabled={syncState === 'syncing'}
+              className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700/80 transition cursor-pointer disabled:opacity-75"
+              title="Automatic real-time sync is active. Tap to sync manually."
             >
-              {syncState === 'synced' && (
+              {(!isOnline || syncState === 'error') ? (
                 <>
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  <span className="text-emerald-300 font-medium">Synced</span>
+                  <WifiOff className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span className="text-amber-300 font-medium hidden xs:inline">Offline - will sync automatically</span>
+                  <span className="text-amber-300 font-medium xs:hidden">Offline</span>
                 </>
-              )}
-              {syncState === 'syncing' && (
+              ) : syncState === 'syncing' ? (
                 <>
-                  <RefreshCw className="w-3 h-3 text-teal-300 animate-spin" />
-                  <span className="text-teal-200">Syncing...</span>
+                  <RefreshCw className="w-3 h-3 text-teal-300 animate-spin shrink-0" />
+                  <span className="text-teal-200 font-medium">Syncing...</span>
                 </>
-              )}
-              {syncState === 'pending' && (
+              ) : (
                 <>
-                  <AlertCircle className="w-3 h-3 text-amber-300" />
-                  <span className="text-amber-200">{pendingMutationsCount} Pending</span>
-                </>
-              )}
-              {syncState === 'error' && (
-                <>
-                  <WifiOff className="w-3 h-3 text-rose-300" />
-                  <span className="text-rose-200">Offline</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <span className="text-emerald-300 font-medium">All changes saved</span>
                 </>
               )}
             </button>

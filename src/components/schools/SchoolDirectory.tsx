@@ -25,7 +25,9 @@ import {
   CheckSquare,
   AlertCircle
 } from 'lucide-react';
-import { School } from '../../types';
+import { School, UserAccount } from '../../types';
+import { HeadTeacherAccessModal } from './HeadTeacherAccessModal';
+import { UserCheck } from 'lucide-react';
 
 export const SchoolDirectory: React.FC = () => {
   const {
@@ -43,6 +45,7 @@ export const SchoolDirectory: React.FC = () => {
     payroll,
     currentUser,
     users,
+    deleteUserAccount,
     activeSchoolId,
     setActiveSchoolId,
     selectedSchoolIdForProfile,
@@ -53,7 +56,7 @@ export const SchoolDirectory: React.FC = () => {
   } = useApp();
 
   const isOperator = currentUser?.role === 'operator';
-  const isHT = currentUser?.role === 'head_teacher';
+  const isHT = currentUser?.role === 'head_teacher' || currentUser?.role === 'headTeacher';
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,9 +65,12 @@ export const SchoolDirectory: React.FC = () => {
   const [programFilter, setProgramFilter] = useState('all');
   const [sortBy, setSortBy] = useState<'name' | 'code' | 'students'>('name');
 
-  // Add / Edit Modal
+  // Add / Edit Modal & HT Access Modal
   const [showSchoolModal, setShowSchoolModal] = useState(false);
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
+  const [schoolToDelete, setSchoolToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [userAccountToDelete, setUserAccountToDelete] = useState<UserAccount | null>(null);
+  const [htAccessModalSchool, setHtAccessModalSchool] = useState<School | null>(null);
 
   // School Profile active tab
   const [profileTab, setProfileTab] = useState<
@@ -255,11 +261,16 @@ export const SchoolDirectory: React.FC = () => {
 
   const handleDeleteSchool = (id: string, name: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm(`Are you sure you want to delete ${name}? All associated student records and visits will be deleted.`)) {
-      deleteSchool(id);
-      if (selectedSchoolIdForProfile === id) {
+    setSchoolToDelete({ id, name });
+  };
+
+  const confirmDeleteSchool = () => {
+    if (schoolToDelete) {
+      deleteSchool(schoolToDelete.id);
+      if (selectedSchoolIdForProfile === schoolToDelete.id) {
         setSelectedSchoolIdForProfile(null);
       }
+      setSchoolToDelete(null);
     }
   };
 
@@ -355,6 +366,17 @@ export const SchoolDirectory: React.FC = () => {
                     <Edit2 className="w-3 h-3 text-emerald-300" />
                     Edit HT
                   </button>
+
+                  {isOperator && (
+                    <button
+                      onClick={() => setHtAccessModalSchool(profileSchool)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-95"
+                      title="Manage Head Teacher Google Invite & Access"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      HT Access
+                    </button>
+                  )}
                 </div>
                 <span>Contact: <strong>{profileSchool.contactNumber}</strong></span>
                 <span>Est: <strong>{profileSchool.establishedDate}</strong></span>
@@ -611,6 +633,40 @@ export const SchoolDirectory: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Delete User Account Confirmation Modal */}
+        {userAccountToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+            <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl text-slate-900 dark:text-white">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-center mb-1">Delete Head Teacher Account?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 text-center mb-5 leading-relaxed">
+                Are you sure you want to delete access for Head Teacher <strong className="text-slate-900 dark:text-white">{userAccountToDelete.name}</strong>?
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setUserAccountToDelete(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteUserAccount(userAccountToDelete.id);
+                    setUserAccountToDelete(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                >
+                  Yes, Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -782,6 +838,20 @@ export const SchoolDirectory: React.FC = () => {
                     >
                       <Edit2 className="w-3 h-3" />
                     </button>
+
+                    {isOperator && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setHtAccessModalSchool(sch);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 transition"
+                        title="Manage Head Teacher Google Invite & Access"
+                      >
+                        <UserCheck className="w-3 h-3" />
+                        HT Access
+                      </button>
+                    )}
                   </div>
                   <span className="font-mono text-[11px] text-slate-400">{sch.contactNumber}</span>
                 </div>
@@ -1064,6 +1134,80 @@ export const SchoolDirectory: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Delete School Confirmation Modal */}
+      {schoolToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl text-slate-900 dark:text-white">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-center mb-1">Delete School?</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center mb-5 leading-relaxed">
+              Are you sure you want to delete <strong className="text-slate-900 dark:text-white">{schoolToDelete.name}</strong>?
+              All enrolled students, staff, and records tied to this campus will be removed.
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSchoolToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteSchool}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete User Account Confirmation Modal */}
+      {userAccountToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl text-slate-900 dark:text-white">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-center mb-1">Delete Head Teacher Account?</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center mb-5 leading-relaxed">
+              Are you sure you want to delete access for Head Teacher <strong className="text-slate-900 dark:text-white">{userAccountToDelete.name}</strong>?
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setUserAccountToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteUserAccount(userAccountToDelete.id);
+                  setUserAccountToDelete(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Head Teacher Access Modal */}
+      {htAccessModalSchool && (
+        <HeadTeacherAccessModal
+          isOpen={!!htAccessModalSchool}
+          school={htAccessModalSchool}
+          onClose={() => setHtAccessModalSchool(null)}
+        />
       )}
     </div>
   );

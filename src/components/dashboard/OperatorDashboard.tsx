@@ -217,14 +217,6 @@ export const OperatorDashboard: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => openEditProfile(currentUser)}
-              className="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5 border border-white/25 active:scale-95"
-              title="Edit Profile"
-            >
-              <Edit2 className="w-3.5 h-3.5 text-emerald-200" />
-              Edit Profile
-            </button>
-            <button
               onClick={() => setCurrentTab('attendance')}
               className="px-3.5 py-2 rounded-xl bg-white text-emerald-900 text-xs font-bold shadow-xs hover:bg-emerald-50 active:scale-95 transition cursor-pointer flex items-center gap-1.5"
             >

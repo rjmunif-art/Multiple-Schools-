@@ -178,190 +178,43 @@ function getSecurityAuditLogs() {
   return [];
 }
 
-// Standard default users for instant multi-mobile access
-const DEFAULT_SYSTEM_USERS: any[] = [
-  {
-    id: 'user-op-1',
-    username: 'operator',
-    name: 'Muhammad Saleh Mangi',
-    email: 'saleh.mangi@sefpartner.org.pk',
-    phone: '+92 300 3456789',
-    role: 'operator',
-    pin: '1234',
-    organizationName: 'Mangi SEF Education Network (Sindh)',
-    createdAt: '2025-01-10T08:00:00Z',
-  },
-  {
-    id: 'usr-op-1793433069790',
-    username: 'SalehMangi',
-    name: 'Muhammad Saleh Mangi',
-    pin: '1212',
-    email: 'saleh.mangi@sefpartner.org.pk',
-    phone: '03000020066',
-    role: 'operator',
-    organizationName: 'SINDH EDUCATION FOUNDATION (SEF)',
-    createdAt: '2026-10-31T07:51:09.791Z',
-  },
-  {
-    id: 'user-ht-1',
-    username: 'ht_munif',
-    name: 'Munif Ahmed',
-    email: 'rjmunif@gmail.com',
-    phone: '+92 301 5551201',
-    role: 'head_teacher',
-    pin: '1111',
-    schoolId: 'sch-1',
-    organizationName: 'Dua Public School (200101073)',
-    createdAt: '2025-02-01T08:00:00Z',
-  },
-  {
-    id: 'usr-1793433323856',
-    name: 'Munif Ahmed',
-    username: 'MunifAhmed',
-    pin: '1212',
-    email: 'rjmunif@gmail.com',
-    role: 'head_teacher',
-    schoolId: 'sch-1',
-    phone: '+923000099382',
-    organizationName: 'Dua Public School (200101073)',
-    createdAt: '2026-10-31T07:55:23.856Z',
-  },
-  {
-    id: 'user-ht-2',
-    username: 'ht_ghufrana',
-    name: 'H.T Ghufrana',
-    email: 'ht.ghufrana@sefpartner.org.pk',
-    phone: '+92 302 4448902',
-    role: 'head_teacher',
-    pin: '2222',
-    schoolId: 'sch-2',
-    organizationName: 'Faiz Public School (200102002)',
-    createdAt: '2025-02-01T08:00:00Z',
-  },
-  {
-    id: 'user-ht-3',
-    username: 'ht_amjad',
-    name: 'Amjad Hussain',
-    email: 'amjad.ht@sefpartner.org.pk',
-    phone: '+92 333 7771234',
-    role: 'head_teacher',
-    pin: '3333',
-    schoolId: 'sch-3',
-    organizationName: 'Sahar Public School (200102011)',
-    createdAt: '2025-02-10T08:00:00Z',
-  },
-  {
-    id: 'user-ht-4',
-    username: 'ht_hafeez',
-    name: 'Hafeez Rehman',
-    email: 'hafeez.ht@sefpartner.org.pk',
-    phone: '+92 300 3981122',
-    role: 'head_teacher',
-    pin: '4444',
-    schoolId: 'sch-4',
-    organizationName: 'SM Public School (200101074)',
-    createdAt: '2025-02-10T08:00:00Z',
-  },
-  {
-    id: 'usr-1793557211348',
-    name: 'Hafeez Memon',
-    username: 'Hafeez',
-    pin: '1111',
-    email: 'hafeez.ht@sefpartner.org.pk',
-    role: 'head_teacher',
-    schoolId: 'sch-4',
-    organizationName: 'SM Public School (200101074)',
-    createdAt: '2026-11-01T18:20:11.348Z',
-  },
-  {
-    id: 'user-ht-5',
-    username: 'ht_arshad',
-    name: 'Sir Arshad Depar',
-    email: 'arshad.depar@sefpartner.org.pk',
-    phone: '+92 306 9123450',
-    role: 'head_teacher',
-    pin: '5555',
-    schoolId: 'sch-5',
-    organizationName: 'Sumair Public School (200101071)',
-    createdAt: '2025-02-15T08:00:00Z',
-  },
-  {
-    id: 'user-sup-1',
-    username: 'supervisor',
-    name: 'Dr. Nighat Sultana Jamali',
-    email: 'nighat.supervisor@sef.gos.pk',
-    phone: '+92 345 8882319',
-    role: 'supervisor',
-    pin: '7777',
-    organizationName: 'SEF Regional Monitoring Directorate - Sindh',
-    createdAt: '2025-01-20T08:00:00Z',
-  },
-];
+// User databases directory (strictly isolated per user ID)
+const USER_DBS_DIR = path.join(STORAGE_DIR, 'user_dbs');
+if (!fs.existsSync(USER_DBS_DIR)) fs.mkdirSync(USER_DBS_DIR, { recursive: true });
 
-// Helpers to load and save cloud database
-function getCloudDatabase(): any {
-  if (fs.existsSync(CLOUD_DB_PATH)) {
+// Standard default users list: empty for multi-tenant isolation
+const DEFAULT_SYSTEM_USERS: any[] = [];
+
+// Helpers to load and save cloud database per user
+function getCloudDatabase(userId?: string): any {
+  if (!userId) return null;
+  const safeId = String(userId).replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const userFile = path.join(USER_DBS_DIR, `${safeId}.json`);
+  if (fs.existsSync(userFile)) {
     try {
-      return JSON.parse(fs.readFileSync(CLOUD_DB_PATH, 'utf-8'));
+      return JSON.parse(fs.readFileSync(userFile, 'utf-8'));
     } catch (e) {
-      console.error('Failed reading cloud DB file:', e);
+      console.error('Failed reading user cloud DB file:', e);
       return null;
     }
   }
   return null;
 }
 
-function saveCloudDatabase(data: any) {
-  fs.writeFileSync(CLOUD_DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+function saveCloudDatabase(data: any, userId?: string) {
+  if (!userId) return;
+  const safeId = String(userId).replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const userFile = path.join(USER_DBS_DIR, `${safeId}.json`);
+  fs.writeFileSync(userFile, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// User registry loader (unifies cloud DB users, user registry file, and default users)
+// User registry loader
 function getAllUsers(): any[] {
-  const usersMap = new Map<string, any>();
-
-  // 1. Seed defaults
-  for (const u of DEFAULT_SYSTEM_USERS) {
-    if (u.username) usersMap.set(u.username.toLowerCase(), u);
-  }
-
-  // 2. Read users_registry.json if exists
-  if (fs.existsSync(USERS_REGISTRY_PATH)) {
-    try {
-      const regUsers = JSON.parse(fs.readFileSync(USERS_REGISTRY_PATH, 'utf-8'));
-      if (Array.isArray(regUsers)) {
-        for (const u of regUsers) {
-          if (u.username) {
-            const key = u.username.toLowerCase();
-            usersMap.set(key, { ...usersMap.get(key), ...u });
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Error reading users registry file:', e);
-    }
-  }
-
-  // 3. Read users in cloud DB
-  const cloudDb = getCloudDatabase();
-  if (cloudDb && Array.isArray(cloudDb.users)) {
-    for (const u of cloudDb.users) {
-      if (u.username) {
-        const key = u.username.toLowerCase();
-        usersMap.set(key, { ...usersMap.get(key), ...u });
-      }
-    }
-  }
-
-  return Array.from(usersMap.values());
+  return [];
 }
 
 function saveAllUsers(users: any[]) {
-  fs.writeFileSync(USERS_REGISTRY_PATH, JSON.stringify(users, null, 2), 'utf-8');
-  const cloudDb = getCloudDatabase();
-  if (cloudDb) {
-    cloudDb.users = users;
-    saveCloudDatabase(cloudDb);
-  }
+  // Kept for interface compatibility
 }
 
 function appendSyncLog(log: any) {
@@ -1384,76 +1237,51 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 5. Fetch Central Cloud Data (Called by Operator or on app launch across mobiles)
+// 5. Fetch Cloud Data for authenticated user
 app.get('/api/cloud/data', (req, res) => {
-  const cloudData = getCloudDatabase();
-  const allUsers = getAllUsers();
-  if (cloudData) {
-    cloudData.users = allUsers;
-  }
+  const userId = req.query.userId as string;
+  const userDb = getCloudDatabase(userId);
   const logs = getSyncLogs();
   res.json({
     success: true,
-    data: cloudData,
+    data: userDb,
     lastSyncLogs: logs.slice(0, 5),
-    message: cloudData ? 'Fetched latest cloud state' : 'No cloud data initialized yet',
+    message: userDb ? 'Fetched user cloud data' : 'No user cloud data initialized yet',
   });
 });
 
-// 6. Sync Endpoint: Head Teacher or Operator pushes queued changes
+// 6. Sync Endpoint: Synchronize database strictly for this user
 app.post('/api/cloud/sync', (req, res) => {
   try {
-    const { database, mutations, user, role, schoolId, syncBatchId } = req.body;
+    const { database, user, mutations, syncBatchId } = req.body;
+    const userId = user?.id || user?.uid;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required for sync' });
+    }
 
     if (!database) {
       return res.status(400).json({ success: false, message: 'Missing database payload' });
     }
 
-    // Smart merge users to preserve all registered accounts across all mobiles
-    const existingUsers = getAllUsers();
-    const incomingUsers = database.users || [];
-    const mergedUsersMap = new Map<string, any>();
-    for (const u of existingUsers) {
-      if (u.username) mergedUsersMap.set(u.username.toLowerCase(), u);
-    }
-    for (const u of incomingUsers) {
-      if (u.username) {
-        const key = u.username.toLowerCase();
-        mergedUsersMap.set(key, { ...mergedUsersMap.get(key), ...u });
-      }
-    }
-    const mergedUsers = Array.from(mergedUsersMap.values());
-    database.users = mergedUsers;
-    saveAllUsers(mergedUsers);
-
-    // Save central cloud database state
-    saveCloudDatabase(database);
+    // Save strictly to this user's isolated file
+    saveCloudDatabase(database, userId);
 
     // Record audit event
     const auditEntry = {
       batchId: syncBatchId || 'batch-' + Date.now(),
       syncedAt: new Date().toISOString(),
-      user: user?.name || 'Unknown User',
-      role: role || user?.role || 'unknown',
-      schoolId: schoolId || 'all',
+      user: user?.name || 'User',
+      role: user?.role || 'operator',
+      schoolId: 'all',
       mutationsCount: mutations?.length || 0,
-      studentsCount: database.students?.length || 0,
-      staffCount: database.staff?.length || 0,
-      documentsCount: database.documents?.length || 0,
-      attendanceCount: database.studentAttendance?.length || 0,
     };
     appendSyncLog(auditEntry);
 
     res.json({
       success: true,
-      message: `Successfully synchronized ${mutations?.length || 0} local mutations to SEF Central Cloud Database.`,
+      message: 'Successfully synchronized user data.',
       syncedAt: auditEntry.syncedAt,
-      serverStats: {
-        totalStudents: database.students?.length || 0,
-        totalSchools: database.schools?.length || 0,
-        totalStaff: database.staff?.length || 0,
-        totalUsers: mergedUsers.length,
-      },
     });
   } catch (err: any) {
     console.error('Sync Error on server:', err);
@@ -1470,7 +1298,7 @@ app.get('/api/cloud/logs', (req, res) => {
 // 5. Head Teacher & Operator AI Assistant (Powered by Gemini 3.8 Flash)
 app.post('/api/ai/chat', async (req, res) => {
   try {
-    const { message, schoolContext, file } = req.body;
+    const { message, schoolContext, file, history } = req.body;
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -1493,7 +1321,8 @@ app.post('/api/ai/chat', async (req, res) => {
     if (schoolContext) {
       contextText = `
 === CURRENT SCHOOL SYSTEM CONTEXT ===
-School: ${schoolContext.schoolName || 'Unknown'} (Code: ${schoolContext.schoolCode || 'N/A'})
+Role: ${schoolContext.userRole === 'headTeacher' ? 'Head Teacher (Assigned School)' : 'School Operator'}
+School: ${schoolContext.schoolName || 'All Campuses'} (Code: ${schoolContext.schoolCode || 'N/A'})
 District: ${schoolContext.district || 'N/A'}, Taluka: ${schoolContext.taluka || 'N/A'}
 Head Teacher: ${schoolContext.headTeacher || 'N/A'}
 Active Enrolled Students: ${schoolContext.totalStudents || 0}
@@ -1512,93 +1341,101 @@ ${schoolContext.staffSample || 'No staff recorded.'}
 `;
     }
 
-    const systemInstruction = `You are the official Sindh Education Foundation (SEF) School AI Assistant designed for Head Teachers, School Operators, and Field Supervisors in Sindh, Pakistan.
+    const systemInstruction = `You are SchoolSync Assistant, a professional school management AI for Pakistani schools (SEF, private, and public).
 
-CAPABILITIES:
-1. SCHOOL EVALUATION & INSIGHTS:
-   - Provide clear, professional evaluations of student attendance, teacher punctuality, grade-wise strength, school facilities, and SEF compliance.
-   - Point out areas of improvement or praise good attendance rates.
-2. RECORD SEARCH & RETRIEVAL:
-   - When asked to search for any student, teacher, GR number, or B-Form, inspect the school context and give immediate, accurate answers.
-3. BULK STUDENT ENROLLMENT FROM DOCUMENTS (PDF, EXCEL, CSV, SCANNED LISTS, TEXT):
-   - When the user uploads a document (PDF, Excel table, text list) and asks to add/enroll students:
-     - Carefully extract all student records with high accuracy.
-     - Detect Pakistani/Sindhi names (e.g. Ali, Ahmed, Chandio, Depar, Mangi, Brohi, Solangi, Khan, Khatoon, etc.).
-     - Identify:
-       * General Register / GR Number (or Roll No / G.R. # / S.No / Admission # from the document if listed, e.g. "101", "GR-101", "45")
-       * Student Name
-       * Father's Name
-       * Mother's Name (if available)
-       * Gender ('Male' or 'Female')
-       * Grade/Class (Kachi, Class I, Class II, Class III, Class IV, Class V, Class VI, Class VII, Class VIII)
-       * Section ('A')
-       * B-Form number (if available)
-       * Guardian Contact phone (if available)
-       * Village / Goth
-     - In your friendly text response, summarize how many students were detected, their grade breakdown, and that you have prepared them for instant enrollment.
-     - CRITICAL: You MUST include a JSON block in your response formatted exactly as:
-\`\`\`json
-{
-  "action": "enroll_students",
-  "students": [
-    {
-      "grNumber": "101",
-      "name": "Muhammad Ali",
-      "fatherName": "Allah Bux",
-      "motherName": "Zubaida",
-      "gender": "Male",
-      "grade": "Class I",
-      "section": "A",
-      "bFormNumber": "41201-1234567-1",
-      "guardianContact": "+92 300 1234567",
-      "village": "Goth Dhani Bux",
-      "dob": "2018-03-15"
+YOUR MISSION:
+Help school operators and head teachers manage student rosters, staff, attendance, fee payments, school compliance, and evaluations with speed and accuracy.
+
+CRITICAL RULES:
+1. ROLE SCOPE:
+   - If the user is a Head Teacher, only answer for their assigned school.
+   - If the user is an Operator, you can answer for specific schools or across all schools.
+2. STRUCTURED ACTIONS:
+   When the user requests an operational task, in addition to a brief friendly explanation, you MUST provide a JSON block enclosed in \`\`\`json ... \`\`\` with an "action" field and "data".
+   Supported actions:
+   - "add_students": { "action": "add_students", "students": [ { "name", "fatherName", "gender", "grade", "section", "grNumber", "bFormNumber", "guardianContact", "village", "dob" } ] }
+   - "add_teachers": { "action": "add_teachers", "teachers": [ { "name", "cnic", "qualification", "designation", "contact", "baseSalary", "subject" } ] }
+   - "update_student": { "action": "update_student", "student": { "id" or "grNumber", "name", "fieldsToUpdate": { ... } } }
+   - "update_teacher": { "action": "update_teacher", "teacher": { "id" or "name", "fieldsToUpdate": { ... } } }
+   - "mark_attendance": { "action": "mark_attendance", "attendance": { "targetType": "student"|"teacher", "name"|"grNumber", "status": "present"|"absent"|"leave"|"late", "date": "YYYY-MM-DD" } }
+   - "record_fee_payment": { "action": "record_fee_payment", "payment": { "studentName"|"grNumber", "amount", "month", "receiptNo" } }
+   - "create_announcement": { "action": "create_announcement", "announcement": { "title", "message", "target": "all"|"staff"|"parents" } }
+
+3. FILE & TEXT ROSTER IMPORT:
+   When the user provides a roster (via document or pasted text), parse ALL entries and output:
+   \`\`\`json
+   {
+     "action": "preview_import",
+     "importType": "students" | "teachers" | "mixed",
+     "students": [ ... ],
+     "teachers": [ ... ]
+   }
+   \`\`\`
+   Detect Pakistani/Sindhi names, father names, GR numbers, grades (Kachi to Class 10), and phone numbers.
+4. FORMATTING:
+   Use clear, clean markdown with bold highlights, tables, and bullet points. Keep explanations crisp.`;
+
+    const contents: any[] = [];
+
+    // Append last 20 conversation history messages if provided
+    if (Array.isArray(history) && history.length > 0) {
+      const recentHistory = history.slice(-20);
+      for (const msg of recentHistory) {
+        if (msg.role === 'user' || msg.role === 'assistant' || msg.sender === 'user' || msg.sender === 'ai') {
+          const role = (msg.role === 'user' || msg.sender === 'user') ? 'user' : 'model';
+          const text = msg.content || msg.text || '';
+          if (text) {
+            contents.push({
+              role,
+              parts: [{ text }],
+            });
+          }
+        }
+      }
     }
-  ]
-}
-\`\`\`
-This JSON block allows the Head Teacher to click a single confirmation button to auto-enroll all students directly into the school register!`;
 
-    const parts: any[] = [];
+    // Build current user message parts
+    const currentParts: any[] = [];
 
-    // If a document or image file is attached
     if (file) {
-      // Support PDF and images via inlineData
       if (file.data && file.mimeType && (file.mimeType.startsWith('image/') || file.mimeType === 'application/pdf')) {
-        parts.push({
+        currentParts.push({
           inlineData: {
             mimeType: file.mimeType,
-            data: file.data, // base64 string
+            data: file.data,
           },
         });
       }
-      // If extracted text from Excel/CSV/text/doc is available
       if (file.extractedText && file.extractedText.trim()) {
-        parts.push({
+        currentParts.push({
           text: `[ATTACHED SPREADSHEET/DOCUMENT: "${file.filename || 'Document'}"]\n${file.extractedText.trim()}\n`,
         });
       }
     }
 
-    parts.push({
-      text: `${contextText}\nUser Message: ${message || 'Please analyze this document and extract students for new enrollment in our school.'}`,
+    currentParts.push({
+      text: `${contextText}\nUser Message: ${message || 'Please assist with school management records.'}`,
+    });
+
+    contents.push({
+      role: 'user',
+      parts: currentParts,
     });
 
     let reply = '';
-    const modelsToAttempt = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+    const modelsToAttempt = ['gemini-3.8-flash', 'gemini-2.5-flash'];
     let lastError: any = null;
 
-    // Fast execution with ThinkingLevel.LOW and 12-second timeout protection
     for (const model of modelsToAttempt) {
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Model ${model} request timed out`)), 12000)
+            setTimeout(() => reject(new Error(`Model ${model} request timed out`)), 14000)
           );
 
           const callPromise = ai.models.generateContent({
             model,
-            contents: { parts },
+            contents,
             config: {
               systemInstruction,
               thinkingConfig: {
@@ -1623,14 +1460,13 @@ This JSON block allows the Head Teacher to click a single confirmation button to
             errMsg.includes('overloaded') ||
             errMsg.includes('UNAVAILABLE') ||
             errMsg.includes('Service Unavailable') ||
-            errMsg.includes('timed out') ||
-            callErr?.status === 503;
+            errMsg.includes('timed out');
 
           if (isRetryable && attempt < 2) {
             await new Promise(r => setTimeout(r, 400));
             continue;
           }
-          break; // proceed to next fallback model
+          break;
         }
       }
       if (reply) break;
@@ -1722,10 +1558,24 @@ This JSON block allows the Head Teacher to click a single confirmation button to
       throw lastError || new Error('AI service was temporarily unavailable. Please try again in a moment.');
     }
 
+    let structuredAction: any = null;
+    if (reply) {
+      try {
+        const fencedMatch = reply.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (fencedMatch && fencedMatch[1]) {
+          const parsed = JSON.parse(fencedMatch[1].trim());
+          if (parsed && parsed.action) {
+            structuredAction = parsed;
+          }
+        }
+      } catch (e) {}
+    }
+
     res.json({
       success: true,
       reply,
       extractedStudents,
+      structuredAction,
     });
   } catch (err: any) {
     console.error('[Gemini AI Error in /api/ai/chat]:', err);

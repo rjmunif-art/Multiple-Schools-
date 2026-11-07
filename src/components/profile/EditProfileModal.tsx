@@ -68,7 +68,7 @@ export const EditProfileModal: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const res = await updateUserProfile({
+      const success = await updateUserProfile({
         name: name.trim(),
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
@@ -77,13 +77,13 @@ export const EditProfileModal: React.FC = () => {
         photoUrl: photoUrl.trim() || undefined,
       });
 
-      if (res.success) {
-        setSuccessMessage(res.message || 'Profile updated successfully!');
+      if (success) {
+        setSuccessMessage('Profile updated successfully!');
         setTimeout(() => {
           setIsEditProfileOpen(false);
         }, 1200);
       } else {
-        setErrorMessage(res.message || 'Failed to update profile. Please check your inputs.');
+        setErrorMessage('Failed to update profile. Please check your inputs.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected error occurred while saving profile.');
@@ -163,7 +163,7 @@ export const EditProfileModal: React.FC = () => {
               <SchoolIcon className="w-5 h-5 text-blue-600 shrink-0" />
               <div className="text-xs">
                 <div className="font-semibold text-blue-900">{assignedSchool.name}</div>
-                <div className="text-blue-700">SEMIS Code: {assignedSchool.semisCode}</div>
+                <div className="text-blue-700">SEMIS Code: {assignedSchool.code}</div>
               </div>
             </div>
           )}

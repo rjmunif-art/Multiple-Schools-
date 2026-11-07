@@ -7,19 +7,21 @@ import {
   School as SchoolIcon,
   Phone,
   Mail,
-  Building,
+  Building2,
+  GraduationCap,
   Save,
   CheckCircle2,
   Camera,
-  Sparkles,
-  Loader2
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { UserAccount, UserRole } from '../../types';
+import { resizeAndCompressImage } from '../../services/imageUtils';
 
 interface EditProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  targetUser?: UserAccount | null; // If provided, edits that user; otherwise edits currentUser
+  targetUser?: UserAccount | null;
 }
 
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({
@@ -37,39 +39,80 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const userToEdit = targetUser || currentUser;
 
   const [name, setName] = useState('');
-  const [role, setRole] = useState<UserRole>('operator');
-  const [organizationName, setOrganizationName] = useState('');
-  const [schoolId, setSchoolId] = useState('');
+  const [instituteName, setInstituteName] = useState('');
+  const [degree, setDegree] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoData, setPhotoData] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  const isOperator = userToEdit?.role === 'operator';
+  const isHT = userToEdit?.role === 'headTeacher' || userToEdit?.role === 'head_teacher';
+
   useEffect(() => {
     if (userToEdit && isOpen) {
       setName(userToEdit.name || '');
-      setRole(userToEdit.role || 'operator');
-      setOrganizationName(userToEdit.organizationName || 'Sindh Rural Education Support Organization (SRESO)');
-      setSchoolId(userToEdit.schoolId || (schools[0]?.id || ''));
+      setInstituteName(userToEdit.instituteName || userToEdit.organizationName || 'Sindh Rural Education Support Organization (SRESO)');
+      setDegree(userToEdit.degree || '');
       setPhone(userToEdit.phone || '');
       setEmail(userToEdit.email || '');
-      setPhotoUrl(userToEdit.photoUrl || '');
+      setPhotoPreview(userToEdit.photoData || userToEdit.photoUrl || null);
+      setPhotoData(userToEdit.photoData);
       setSuccessMsg('');
       setErrorMsg('');
     }
-  }, [userToEdit, isOpen, schools]);
+  }, [userToEdit, isOpen]);
 
   if (!isOpen || !userToEdit) return null;
 
-  const isHT = role === 'head_teacher';
-  const isOperator = role === 'operator';
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressed = await resizeAndCompressImage(file, 256, 0.7);
+      setPhotoData(compressed);
+      setPhotoPreview(compressed);
+      setErrorMsg('');
+    } catch (err: any) {
+      console.error('Image compression error:', err);
+      setErrorMsg('Could not process selected image. Please choose another.');
+    }
+  };
+
+  const validatePhone = (val: string): boolean => {
+    const cleaned = val.replace(/[\s-]/g, '');
+    return /^(\+92|92|0)?3[0-9]{9}$/.test(cleaned);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setErrorMsg('Please enter a valid full name.');
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
+    const trimmedInstitute = instituteName.trim();
+    const trimmedDegree = degree.trim();
+
+    if (!trimmedName) {
+      setErrorMsg('Please enter your full name.');
+      return;
+    }
+    if (isOperator && !trimmedInstitute) {
+      setErrorMsg('Please enter your Institute or Organization name.');
+      return;
+    }
+    if (isOperator && !trimmedDegree) {
+      setErrorMsg('Please enter your educational degree.');
+      return;
+    }
+    if (!trimmedPhone) {
+      setErrorMsg('Please enter your mobile phone number.');
+      return;
+    }
+    if (!validatePhone(trimmedPhone)) {
+      setErrorMsg('Please enter a valid Pakistani mobile number (e.g. 03001234567 or +923001234567).');
       return;
     }
 
@@ -77,25 +120,25 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
     setErrorMsg('');
     try {
       const updatedData: Partial<UserAccount> = {
-        name: name.trim(),
-        role,
-        phone: phone.trim() || undefined,
-        email: email.trim() || undefined,
-        photoUrl: photoUrl.trim() || undefined,
-        organizationName: isOperator ? organizationName.trim() : userToEdit.organizationName,
-        schoolId: isHT ? schoolId : undefined,
+        name: trimmedName,
+        phone: trimmedPhone,
+        photoData: photoData || photoPreview || undefined,
+        photoUrl: photoData || photoPreview || undefined,
+        instituteName: isOperator ? trimmedInstitute : userToEdit.instituteName,
+        organizationName: isOperator ? trimmedInstitute : userToEdit.organizationName,
+        degree: isOperator ? trimmedDegree : userToEdit.degree,
       };
 
       await updateUserProfile(updatedData);
 
-      // If head teacher name changed and school is assigned, also update the school's HT name for consistency
-      if (isHT && schoolId) {
-        const assignedSchool = schools.find(s => s.id === schoolId);
-        if (assignedSchool && assignedSchool.headTeacherName !== name.trim()) {
+      // If head teacher name/contact changed, keep assigned school sync'd
+      if (isHT && userToEdit.schoolId) {
+        const assignedSchool = schools.find(s => s.id === userToEdit.schoolId);
+        if (assignedSchool) {
           updateSchool({
             ...assignedSchool,
-            headTeacherName: name.trim(),
-            contactNumber: phone.trim() || assignedSchool.contactNumber,
+            headTeacherName: trimmedName,
+            contactNumber: trimmedPhone,
           });
         }
       }
@@ -103,7 +146,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setSuccessMsg('Profile updated successfully and synced across all devices!');
       setTimeout(() => {
         onClose();
-      }, 900);
+      }, 800);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to update profile. Please try again.');
     } finally {
@@ -122,10 +165,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-white">
-                Edit {isOperator ? 'Operator' : isHT ? 'Head Teacher (HT)' : 'User'} Profile
+                Edit {isOperator ? 'Operator' : 'Head Teacher'} Profile
               </h2>
               <p className="text-xs text-slate-400">
-                Update account details & personal role information
+                Update account details & administrative credentials
               </p>
             </div>
           </div>
@@ -148,161 +191,125 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
           )}
 
           {errorMsg && (
-            <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
-              {errorMsg}
+            <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
-          {/* Profile Photo Avatar Preview */}
-          <div className="flex items-center gap-4 p-3 rounded-2xl bg-slate-800/50 border border-slate-800">
-            <div className="relative w-14 h-14 rounded-full overflow-hidden bg-emerald-600 flex items-center justify-center text-white font-black text-xl shrink-0 shadow-md">
-              {photoUrl ? (
-                <img
-                  src={photoUrl}
-                  alt={name}
-                  className="w-full h-full object-cover"
-                  onError={() => setPhotoUrl('')}
+          {/* Profile Photo Avatar Upload */}
+          <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-800/50 border border-slate-800">
+            <div className="relative group">
+              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-500/60 bg-slate-800 shadow-xl flex items-center justify-center">
+                {photoPreview ? (
+                  <img
+                    src={photoPreview}
+                    alt={name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-10 h-10 text-slate-500" />
+                )}
+              </div>
+              <label
+                htmlFor="edit-profile-photo"
+                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center shadow-lg cursor-pointer transition active:scale-90"
+                title="Change Photo"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <input
+                  id="edit-profile-photo"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
                 />
-              ) : (
-                name.charAt(0) || 'U'
-              )}
-            </div>
-            <div className="flex-1">
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                Profile Photo URL
               </label>
-              <input
-                type="url"
-                value={photoUrl}
-                onChange={e => setPhotoUrl(e.target.value)}
-                placeholder="https://example.com/avatar.jpg"
-                className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-emerald-500"
-              />
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Google account profile photo is loaded automatically
-              </p>
             </div>
+            <p className="text-[11px] text-slate-400 mt-2">
+              {photoPreview ? 'Profile photo ready' : 'Tap camera icon to change'}
+            </p>
           </div>
 
           {/* Full Name */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-emerald-400" />
-              Full Name *
+              Full Name <span className="text-rose-400">*</span>
             </label>
             <input
               type="text"
               required
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g. Muhammad Saleh Mangi or Munif Ahmed"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+              placeholder="e.g. Munif Ahmed"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-none focus:border-emerald-500 transition"
             />
           </div>
 
-          {/* Role Selection */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-emerald-400" />
-              Portal Access Role
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setRole('operator')}
-                className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                  isOperator
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-xs'
-                    : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Shield className="w-3.5 h-3.5 text-amber-400" />
-                Operator (All Schools)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRole('head_teacher')}
-                className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                  isHT
-                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-xs'
-                    : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <SchoolIcon className="w-3.5 h-3.5 text-emerald-400" />
-                Head Teacher (HT)
-              </button>
-            </div>
-          </div>
-
-          {/* Assigned School (if Head Teacher) */}
-          {isHT && (
-            <div className="p-3 rounded-2xl bg-emerald-950/20 border border-emerald-800/40">
-              <label className="block text-xs font-semibold text-emerald-300 mb-1.5 flex items-center gap-1.5">
-                <SchoolIcon className="w-3.5 h-3.5 text-emerald-400" />
-                Assigned Head Teacher Campus *
-              </label>
-              <select
-                value={schoolId}
-                onChange={e => setSchoolId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-emerald-700/60 text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-400"
-              >
-                {schools.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.code}) - {s.district}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-emerald-400/80 mt-1">
-                Head Teachers automatically focus on their assigned campus for roll calls, student register & reports.
-              </p>
-            </div>
-          )}
-
-          {/* Organization Name (if Operator) */}
+          {/* Institute Name (Operator) */}
           {isOperator && (
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Building className="w-3.5 h-3.5 text-emerald-400" />
-                SEF Operator Organization / NGO Name
+                <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                Institute / Organization Name <span className="text-rose-400">*</span>
               </label>
               <input
                 type="text"
-                value={organizationName}
-                onChange={e => setOrganizationName(e.target.value)}
-                placeholder="e.g. Mangi SEF Education Network (Sindh)"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                required
+                value={instituteName}
+                onChange={e => setInstituteName(e.target.value)}
+                placeholder="e.g. Sindh Rural Education Support Organization (SRESO)"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
           )}
+
+          {/* Educational Degree (Operator) */}
+          {isOperator && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
+                Educational Degree <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={degree}
+                onChange={e => setDegree(e.target.value)}
+                placeholder="e.g. M.Ed / B.S Education"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-none focus:border-emerald-500 transition"
+              />
+            </div>
+          )}
+
+          {/* Email (Read-Only from Google) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-slate-400" />
+              Google Email Address (Read-Only)
+            </label>
+            <input
+              type="email"
+              disabled
+              value={email}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-400 text-xs sm:text-sm cursor-not-allowed"
+            />
+          </div>
 
           {/* Phone Number */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5 text-emerald-400" />
-              Contact Mobile Number
+              Contact Phone Number <span className="text-rose-400">*</span>
             </label>
             <input
               type="tel"
+              required
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              placeholder="e.g. +92 300 1234567 or 03001234567"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-            />
-          </div>
-
-          {/* Email Address */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5 text-emerald-400" />
-              Email Address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="e.g. rjmunif@gmail.com"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+              placeholder="e.g. 03001234567 or +923001234567"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm focus:outline-none focus:border-emerald-500 transition"
             />
           </div>
 

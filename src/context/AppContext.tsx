@@ -29,15 +29,27 @@ import {
   validateFirestoreConnection,
 } from '../firebase/config';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { SchoolInvite } from '../types';
+
+export type AuthFlowStatus = 'loading' | 'unauthenticated' | 'needs_operator_setup' | 'needs_head_teacher_setup' | 'authenticated' | 'auth_error';
 
 interface AppContextType {
   currentUser: UserAccount | null;
   users: UserAccount[];
   isAuthLoading: boolean;
+  authStatus: AuthFlowStatus;
+  pendingFirebaseUser: FirebaseUser | null;
+  pendingInvite: SchoolInvite | null;
   authError: string | null;
   loginWithGoogleAuth: () => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
+  retryAuth: () => Promise<void>;
   updateUserProfile: (updates: Partial<UserAccount>) => Promise<boolean>;
+  completeOperatorSetup: (details: { name: string; instituteName: string; degree: string; phone: string; photoData?: string }) => Promise<void>;
+  completeHeadTeacherSetup: (details: { name: string; phone: string; photoData?: string }) => Promise<void>;
+  inviteHeadTeacher: (schoolId: string, email: string, name?: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  removeHeadTeacher: (schoolId: string, email?: string) => Promise<{ success: boolean; error?: string }>;
+  getSchoolInvites: (schoolId: string) => Promise<SchoolInvite[]>;
 
   // Legacy compatibility helpers
   login: (username: string, pin: string) => Promise<{ success: boolean; message: string }>;
@@ -178,6 +190,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [db, setDb] = useState<AppDatabase>(() => storageService.loadDatabase());
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [authStatus, setAuthStatus] = useState<AuthFlowStatus>('loading');
+  const [pendingFirebaseUser, setPendingFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [pendingInvite, setPendingInvite] = useState<SchoolInvite | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [activeSchoolId, setActiveSchoolId] = useState<string>('all');
@@ -358,6 +373,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
   }, []);
 
+  const processAuthUser = useCallback(async (firebaseUser: FirebaseUser) => {
+    setIsAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      // 1. Check if user document exists in users/{uid} and profileCompleted == true
+      const check = await firebaseSync.checkUserProfile(firebaseUser);
+
+      // If Firestore read fails, never default to operator!
+      if (check.error) {
+        setAuthError(`Unable to verify user account: ${check.error}`);
+        setAuthStatus('auth_error');
+        setIsAuthLoading(false);
+        return;
+      }
+
+      if (check.profileCompleted && check.user) {
+        // a) users/{uid} exists with profileCompleted == true -> open dashboard for its saved role
+        setCurrentUser(check.user);
+        storageService.setCurrentUser(check.user);
+        setPendingFirebaseUser(null);
+        setPendingInvite(null);
+
+        let remoteDb: AppDatabase;
+        if (check.user.role === 'headTeacher' || check.user.role === 'head_teacher') {
+          remoteDb = await firebaseSync.loadHeadTeacherData(check.user);
+          if (check.user.schoolId) {
+            setActiveSchoolId(check.user.schoolId);
+            firebaseSync.subscribeToSchoolData(check.user.schoolId, updatedSchoolData => {
+              setDb(curr => ({
+                ...curr,
+                students: updatedSchoolData.students || curr.students,
+                staff: updatedSchoolData.staff || curr.staff,
+                studentAttendance: updatedSchoolData.studentAttendance || curr.studentAttendance,
+                staffAttendance: updatedSchoolData.staffAttendance || curr.staffAttendance,
+                payroll: updatedSchoolData.payroll || curr.payroll,
+                examinations: updatedSchoolData.examinations || curr.examinations,
+                examMarks: updatedSchoolData.examMarks || curr.examMarks,
+                visits: updatedSchoolData.visits || curr.visits,
+                issues: updatedSchoolData.issues || curr.issues,
+                tasks: updatedSchoolData.tasks || curr.tasks,
+                documents: updatedSchoolData.documents || curr.documents,
+              }));
+            });
+          }
+        } else {
+          remoteDb = await firebaseSync.loadOperatorData(check.user);
+          setActiveSchoolId('all');
+
+          firebaseSync.subscribeToOperatorSchools(check.user.id, updatedSchools => {
+            setDb(curr => ({
+              ...curr,
+              schools: updatedSchools,
+            }));
+          });
+        }
+
+        setDb(remoteDb);
+        storageService.saveFullDatabase(remoteDb);
+        setAuthStatus('authenticated');
+        setIsAuthLoading(false);
+        return;
+      }
+
+      // b) Else, check if invites/{lowercase signed-in email} exists
+      const cleanEmail = (firebaseUser.email || '').trim().toLowerCase();
+      if (!cleanEmail) {
+        setAuthError('Your Google account does not provide an email address.');
+        setAuthStatus('auth_error');
+        setIsAuthLoading(false);
+        return;
+      }
+
+      const inviteRes = await firebaseSync.checkInvite(cleanEmail);
+
+      // Never default to operator if a Firestore read fails!
+      if (inviteRes.error) {
+        setAuthError(`Unable to verify invitation status: ${inviteRes.error}`);
+        setAuthStatus('auth_error');
+        setIsAuthLoading(false);
+        return;
+      }
+
+      setPendingFirebaseUser(firebaseUser);
+
+      if (inviteRes.found && inviteRes.invite) {
+        // b) invites/{lowercase signed-in email} exists: the user is a HEAD TEACHER
+        setPendingInvite(inviteRes.invite);
+        setAuthStatus('needs_head_teacher_setup');
+      } else {
+        // c) Else, only if the invite truly does not exist (not found, not an error): OPERATOR
+        setPendingInvite(null);
+        setAuthStatus('needs_operator_setup');
+      }
+    } catch (err: any) {
+      console.error('[Firebase Auth] Error during post-auth sync:', err);
+      setAuthError(err.message || 'An error occurred during authentication routing.');
+      setAuthStatus('auth_error');
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }, []);
+
+  const retryAuth = useCallback(async () => {
+    const user = auth.currentUser || pendingFirebaseUser;
+    if (user) {
+      await processAuthUser(user);
+    } else {
+      setAuthStatus('unauthenticated');
+    }
+  }, [pendingFirebaseUser, processAuthUser]);
+
   // Primary Auth Listener: onAuthStateChanged as single source of truth for login state
   useEffect(() => {
     validateFirestoreConnection().catch(() => {});
@@ -366,58 +493,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAuthError(null);
 
       if (firebaseUser) {
-        try {
-          // 1. Ensure user profile document exists in Firestore under users/{uid}
-          const profile = await firebaseSync.ensureUserDocument(firebaseUser);
-
-          // 2. Load or migrate school database under users/{uid}/data/database
-          const currentLocalDb = storageService.loadDatabase();
-          const remoteDb = await firebaseSync.loadOrMigrateUserData(firebaseUser.uid, currentLocalDb);
-
-          // Update local state and cache
-          setDb(remoteDb);
-          storageService.saveFullDatabase(remoteDb);
-
-          // 3. Construct current user object
-          const appUser: UserAccount = {
-            id: firebaseUser.uid,
-            username: firebaseUser.email?.split('@')[0] || 'operator',
-            name: profile.displayName || firebaseUser.displayName || 'School Operator',
-            email: firebaseUser.email || '',
-            phone: profile.phone || '',
-            role: (profile.role as UserRole) || 'operator',
-            pin: '••••',
-            organizationName: profile.organizationName || 'Sindh Rural Education Support Organization (SRESO)',
-            schoolId: profile.schoolId,
-            photoUrl: profile.photoURL || firebaseUser.photoURL || undefined,
-            createdAt: profile.createdAt || new Date().toISOString(),
-          };
-
-          setCurrentUser(appUser);
-          storageService.setCurrentUser(appUser);
-
-          if (appUser.role === 'head_teacher' && appUser.schoolId) {
-            setActiveSchoolId(appUser.schoolId);
-          } else {
-            setActiveSchoolId('all');
-          }
-
-          // 4. Attach real-time Firestore listener to keep all devices in sync
-          firebaseSync.subscribeToUserData(firebaseUser.uid, updatedDb => {
-            console.log('[Firestore Sync] Received live database update from cloud');
-            setDb(updatedDb);
-            storageService.saveFullDatabase(updatedDb);
-          });
-        } catch (err: any) {
-          console.warn('[Firebase Auth] Error during post-auth sync:', err);
-        } finally {
-          setIsAuthLoading(false);
-        }
+        await processAuthUser(firebaseUser);
       } else {
-        // User is signed out
         firebaseSync.cleanup();
         setCurrentUser(null);
+        setPendingFirebaseUser(null);
+        setPendingInvite(null);
         storageService.setCurrentUser(null);
+        setAuthStatus('unauthenticated');
         setIsAuthLoading(false);
       }
     });
@@ -426,15 +509,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribe();
       firebaseSync.cleanup();
     };
-  }, []);
+  }, [processAuthUser]);
 
   // Online / offline listeners
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       if (!isSimulatedOffline && currentUserRef.current) {
-        // Auto-save any local state
-        firebaseSync.saveUserData(currentUserRef.current.id, dbRef.current).catch(() => {});
+        firebaseSync.saveDatabase(currentUserRef.current, dbRef.current).catch(() => {});
       }
     };
     const handleOffline = () => {
@@ -473,23 +555,139 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await signOutUser();
       firebaseSync.cleanup();
       setCurrentUser(null);
+      setPendingFirebaseUser(null);
+      setPendingInvite(null);
       storageService.setCurrentUser(null);
+      setAuthStatus('unauthenticated');
     } catch (err: any) {
       console.warn('Sign out warning:', err);
       setCurrentUser(null);
       storageService.setCurrentUser(null);
+      setAuthStatus('unauthenticated');
     }
   }, []);
 
-  // Synchronize database to Firestore and local storage
+  // Complete Operator profile setup
+  const completeOperatorSetup = useCallback(async (details: {
+    name: string;
+    instituteName: string;
+    degree: string;
+    phone: string;
+    photoData?: string;
+  }) => {
+    if (!pendingFirebaseUser) throw new Error('No authenticated Google session found');
+    const operatorUser = await firebaseSync.completeOperatorProfile(pendingFirebaseUser, details);
+    setCurrentUser(operatorUser);
+    storageService.setCurrentUser(operatorUser);
+    setPendingFirebaseUser(null);
+    setPendingInvite(null);
+
+    const remoteDb = await firebaseSync.loadOperatorData(operatorUser);
+    setDb(remoteDb);
+    storageService.saveFullDatabase(remoteDb);
+    setActiveSchoolId('all');
+    setAuthStatus('authenticated');
+  }, [pendingFirebaseUser]);
+
+  // Complete Head Teacher profile setup
+  const completeHeadTeacherSetup = useCallback(async (details: {
+    name: string;
+    phone: string;
+    photoData?: string;
+  }) => {
+    if (!pendingFirebaseUser || !pendingInvite) throw new Error('No active invite found for session');
+    const htUser = await firebaseSync.completeHeadTeacherProfile(pendingFirebaseUser, pendingInvite, details);
+    setCurrentUser(htUser);
+    storageService.setCurrentUser(htUser);
+    setPendingFirebaseUser(null);
+    setPendingInvite(null);
+
+    const remoteDb = await firebaseSync.loadHeadTeacherData(htUser);
+    setDb(remoteDb);
+    storageService.saveFullDatabase(remoteDb);
+    if (htUser.schoolId) {
+      setActiveSchoolId(htUser.schoolId);
+    }
+    setAuthStatus('authenticated');
+  }, [pendingFirebaseUser, pendingInvite]);
+
+  // Invite Head Teacher
+  const inviteHeadTeacher = useCallback(async (
+    schoolId: string,
+    email: string,
+    name?: string,
+    phone?: string
+  ) => {
+    if (!currentUserRef.current) return { success: false, error: 'Not authenticated' };
+    const school = dbRef.current.schools.find(s => s.id === schoolId);
+    const res = await firebaseSync.inviteHeadTeacher(
+      currentUserRef.current.id,
+      currentUserRef.current.name,
+      schoolId,
+      school?.name || 'School',
+      email,
+      name,
+      phone
+    );
+
+    if (res.success && school) {
+      const updatedSchool: School = {
+        ...school,
+        headTeacherEmail: email.toLowerCase(),
+        headTeacherName: name || school.headTeacherName,
+        contactNumber: phone || school.contactNumber,
+        updatedAt: new Date().toISOString(),
+      };
+      const updatedSchools = dbRef.current.schools.map(s => s.id === schoolId ? updatedSchool : s);
+      setDb(curr => ({ ...curr, schools: updatedSchools }));
+    }
+
+    return res;
+  }, []);
+
+  // Remove Head Teacher
+  const removeHeadTeacher = useCallback(async (schoolId: string, email?: string) => {
+    const res = await firebaseSync.removeHeadTeacherAccess(schoolId, email);
+    if (res.success) {
+      const school = dbRef.current.schools.find(s => s.id === schoolId);
+      if (school) {
+        const updatedSchool: School = {
+          ...school,
+          headTeacherUid: undefined,
+          headTeacherEmail: undefined,
+          updatedAt: new Date().toISOString(),
+        };
+        const updatedSchools = dbRef.current.schools.map(s => s.id === schoolId ? updatedSchool : s);
+        setDb(curr => ({ ...curr, schools: updatedSchools }));
+      }
+    }
+    return res;
+  }, []);
+
+  const getSchoolInvites = useCallback(async (schoolId: string) => {
+    return await firebaseSync.getSchoolInvites(schoolId);
+  }, []);
+
+  // Synchronize database to Firestore and local storage in real-time
   const persistDatabase = useCallback((updatedDb: AppDatabase) => {
     setDb(updatedDb);
     storageService.saveFullDatabase(updatedDb);
 
     if (currentUserRef.current?.id && navigator.onLine && !isSimulatedOffline) {
-      firebaseSync.saveUserData(currentUserRef.current.id, updatedDb).catch(err => {
-        console.warn('Firestore auto-save warning:', err);
-      });
+      setSyncState('syncing');
+      firebaseSync.saveDatabase(currentUserRef.current, updatedDb)
+        .then(res => {
+          if (res.success) {
+            setSyncState('synced');
+            setLastSyncTime(new Date().toISOString());
+          } else {
+            setSyncState('error');
+          }
+        })
+        .catch(err => {
+          console.warn('[Firestore] Auto-save warning:', err);
+          setSyncState('error');
+        });
     }
   }, [isSimulatedOffline]);
 
@@ -507,7 +705,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(updatedUser);
     storageService.setCurrentUser(updatedUser);
 
-    // Update in user list if exists
     const updatedUsers = dbRef.current.users.map(u => u.id === uid ? updatedUser : u);
     if (!updatedUsers.some(u => u.id === uid)) {
       updatedUsers.push(updatedUser);
@@ -516,15 +713,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedDb = { ...dbRef.current, users: updatedUsers };
     persistDatabase(updatedDb);
 
-    // Update Firestore user document
     await firebaseSync.updateUserProfile(uid, {
-      displayName: updatedUser.name,
-      role: updatedUser.role,
+      name: updatedUser.name,
       phone: updatedUser.phone,
-      email: updatedUser.email,
-      photoURL: updatedUser.photoUrl,
+      photoData: updatedUser.photoData,
+      photoUrl: updatedUser.photoUrl,
+      instituteName: updatedUser.instituteName,
       organizationName: updatedUser.organizationName,
-      schoolId: updatedUser.schoolId,
+      degree: updatedUser.degree,
+      updatedAt: new Date().toISOString(),
     });
 
     return true;
@@ -532,20 +729,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Cloud manual sync
   const syncNow = useCallback(async () => {
-    if (!isOnline || isSimulatedOffline || !currentUserRef.current) {
+    if (!currentUserRef.current) {
       setSyncState('error');
       return;
     }
     setSyncState('syncing');
     try {
-      await firebaseSync.saveUserData(currentUserRef.current.id, dbRef.current);
+      const res = await firebaseSync.saveDatabase(currentUserRef.current, dbRef.current);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to save to Firestore');
+      }
+
       setPendingMutationsCount(0);
-      setLastSyncTime(new Date().toISOString());
+      const now = new Date().toISOString();
+      setLastSyncTime(now);
       setSyncState('synced');
-    } catch {
+    } catch (err: any) {
+      console.error('Manual sync failed:', err);
       setSyncState('error');
     }
-  }, [isOnline, isSimulatedOffline]);
+  }, []);
 
   const toggleSimulateOffline = useCallback(() => {
     setIsSimulatedOffline(prev => {
@@ -561,9 +764,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // CRUD Actions
   const addSchool = useCallback((schoolData: Omit<School, 'id' | 'createdAt' | 'updatedAt'>) => {
+    // Head teachers cannot add schools
+    if (currentUserRef.current?.role === 'headTeacher' || currentUserRef.current?.role === 'head_teacher') {
+      console.warn('Head Teachers are not permitted to add schools.');
+      return {} as School;
+    }
+
     const newSchool: School = {
       ...schoolData,
       id: 'sch-' + Date.now(),
+      ownerUid: currentUserRef.current?.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -961,10 +1171,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentUser,
     users: db.users,
     isAuthLoading,
+    authStatus,
+    pendingFirebaseUser,
+    pendingInvite,
     authError,
     loginWithGoogleAuth,
     logout,
+    retryAuth,
     updateUserProfile,
+    completeOperatorSetup,
+    completeHeadTeacherSetup,
+    inviteHeadTeacher,
+    removeHeadTeacher,
+    getSchoolInvites,
 
     login,
     signUpOperator,

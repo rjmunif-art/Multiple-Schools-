@@ -106,13 +106,14 @@ class StorageService {
     }
   }
 
-  // Initialize data if not yet present
+  // Initialize data: Ensure clean database version
   public initDatabase(): void {
     if (!this.isBrowser()) return;
-    const CURRENT_DATA_VERSION = 'v3_muhammad_saleh_mangi_5_schools';
+    const CURRENT_DATA_VERSION = 'v5_clean_multi_tenant_empty';
     const storedVersion = localStorage.getItem('sef_dataset_version');
-    if (!localStorage.getItem(STORAGE_KEYS.SCHOOLS) || storedVersion !== CURRENT_DATA_VERSION) {
-      this.resetToSampleData();
+    if (storedVersion !== CURRENT_DATA_VERSION) {
+      // Purge any legacy cached sample data so users start completely fresh
+      this.resetToEmptyData();
       localStorage.setItem('sef_dataset_version', CURRENT_DATA_VERSION);
     }
   }
@@ -145,7 +146,7 @@ class StorageService {
     this.setItem(STORAGE_KEYS.STUDENTS, []);
     this.setItem(STORAGE_KEYS.STUDENT_ATTENDANCE, []);
     this.setItem(STORAGE_KEYS.STAFF_ATTENDANCE, []);
-    this.setItem(STORAGE_KEYS.EXAMINATIONS, INITIAL_EXAMINATIONS);
+    this.setItem(STORAGE_KEYS.EXAMINATIONS, []);
     this.setItem(STORAGE_KEYS.EXAM_MARKS, []);
     this.setItem(STORAGE_KEYS.PAYROLL, []);
     this.setItem(STORAGE_KEYS.VISITS, []);
@@ -631,20 +632,20 @@ class StorageService {
   // Load all database collections
   public loadDatabase(): AppDatabase {
     return {
-      users: this.getItem(STORAGE_KEYS.USERS, INITIAL_USERS),
-      schools: this.getItem(STORAGE_KEYS.SCHOOLS, INITIAL_SCHOOLS),
-      staff: this.getItem(STORAGE_KEYS.STAFF, INITIAL_STAFF),
-      students: this.getItem(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS),
-      studentAttendance: this.getItem(STORAGE_KEYS.STUDENT_ATTENDANCE, INITIAL_STUDENT_ATTENDANCE),
-      staffAttendance: this.getItem(STORAGE_KEYS.STAFF_ATTENDANCE, INITIAL_STAFF_ATTENDANCE),
-      examinations: this.getItem(STORAGE_KEYS.EXAMINATIONS, INITIAL_EXAMINATIONS),
-      examMarks: this.getItem(STORAGE_KEYS.EXAM_MARKS, INITIAL_EXAM_MARKS),
-      payroll: this.getItem(STORAGE_KEYS.PAYROLL, INITIAL_PAYROLL),
-      visits: this.getItem(STORAGE_KEYS.VISITS, INITIAL_VISITS),
-      issues: this.getItem(STORAGE_KEYS.ISSUES, INITIAL_ISSUES),
-      tasks: this.getItem(STORAGE_KEYS.TASKS, INITIAL_TASKS),
-      documents: this.getItem(STORAGE_KEYS.DOCUMENTS, INITIAL_DOCUMENTS),
-      notifications: this.getItem(STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS),
+      users: this.getItem(STORAGE_KEYS.USERS, []),
+      schools: this.getItem(STORAGE_KEYS.SCHOOLS, []),
+      staff: this.getItem(STORAGE_KEYS.STAFF, []),
+      students: this.getItem(STORAGE_KEYS.STUDENTS, []),
+      studentAttendance: this.getItem(STORAGE_KEYS.STUDENT_ATTENDANCE, []),
+      staffAttendance: this.getItem(STORAGE_KEYS.STAFF_ATTENDANCE, []),
+      examinations: this.getItem(STORAGE_KEYS.EXAMINATIONS, []),
+      examMarks: this.getItem(STORAGE_KEYS.EXAM_MARKS, []),
+      payroll: this.getItem(STORAGE_KEYS.PAYROLL, []),
+      visits: this.getItem(STORAGE_KEYS.VISITS, []),
+      issues: this.getItem(STORAGE_KEYS.ISSUES, []),
+      tasks: this.getItem(STORAGE_KEYS.TASKS, []),
+      documents: this.getItem(STORAGE_KEYS.DOCUMENTS, []),
+      notifications: this.getItem(STORAGE_KEYS.NOTIFICATIONS, []),
       settings: this.getItem(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS),
     };
   }

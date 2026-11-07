@@ -1,5 +1,12 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  getFirestore,
+  doc,
+  getDocFromServer
+} from 'firebase/firestore';
 import {
   getAuth,
   GoogleAuthProvider,
@@ -16,10 +23,25 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const db =
-  firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-    : getFirestore(app);
+export const db = (() => {
+  const dbId = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+    ? firebaseConfig.firestoreDatabaseId
+    : undefined;
+
+  try {
+    const cacheSettings = {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    };
+    return dbId
+      ? initializeFirestore(app, cacheSettings, dbId)
+      : initializeFirestore(app, cacheSettings);
+  } catch (err) {
+    console.warn('[Firebase] initializeFirestore already called or failed, falling back to getFirestore:', err);
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
+  }
+})();
 
 export const auth = getAuth(app);
 

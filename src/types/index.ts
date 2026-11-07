@@ -1,4 +1,4 @@
-export type UserRole = 'operator' | 'head_teacher' | 'supervisor';
+export type UserRole = 'operator' | 'headTeacher' | 'head_teacher' | 'supervisor';
 export type AuthProviderType = 'credentials' | 'google' | 'phone' | 'email' | 'linked';
 
 export interface ActiveDevice {
@@ -14,16 +14,21 @@ export interface ActiveDevice {
 }
 
 export interface UserAccount {
-  id: string; // Internal stable user_id
+  id: string; // Internal stable user_id (Firebase UID)
   username: string;
   name: string;
   email?: string;
-  phone?: string; // Canonical E.164: +923XXXXXXXXX
+  phone?: string; // Canonical phone number
   role: UserRole;
-  pin: string; // Security PIN / Password
-  schoolId?: string; // If head_teacher, assigned school ID
+  pin?: string; // Security PIN
+  schoolId?: string; // If headTeacher, assigned school ID
   assignedSchoolIds?: string[]; // If operator, assigned school IDs (or all schools)
-  organizationName?: string; // For operator
+  organizationName?: string; // Institute/Organization name
+  instituteName?: string; // Institute/Organization name
+  degree?: string; // Educational degree
+  photoData?: string; // Base64 compressed image (max 256x256 JPEG)
+  profileCompleted?: boolean; // Profile completion flag
+  operatorUid?: string; // If headTeacher, the operator who invited them
   authProvider?: AuthProviderType;
   googleUid?: string; // Stable Google sub/ID
   phoneVerified?: boolean;
@@ -36,6 +41,40 @@ export interface UserAccount {
   createdAt: string;
   updatedAt?: string;
   devices?: ActiveDevice[];
+}
+
+export interface SchoolInvite {
+  email: string; // lowercase email
+  name?: string;
+  phone?: string;
+  schoolId: string;
+  schoolName?: string;
+  operatorUid: string;
+  operatorName?: string;
+  createdAt: string;
+}
+
+export interface AssistantChat {
+  id: string;
+  schoolId: string;
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantChatMessage {
+  id: string;
+  chatId: string;
+  userId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  structuredAction?: {
+    type: 'add_students' | 'add_teachers' | 'update_student' | 'update_teacher' | 'mark_attendance' | 'record_fee_payment' | 'create_announcement';
+    data: any;
+    status: 'pending' | 'confirmed' | 'cancelled';
+  };
 }
 
 export interface AuditLogEntry {
@@ -60,6 +99,9 @@ export interface School {
   uc: string; // Union Council
   village: string;
   address: string;
+  ownerUid?: string; // Firebase UID of the operator who owns this school
+  headTeacherUid?: string; // Firebase UID of the assigned head teacher
+  headTeacherEmail?: string; // Google Email of the assigned head teacher
   gpsCoordinates?: {
     lat: number;
     lng: number;

@@ -29,6 +29,7 @@ import { PullToRefresh } from './components/common/PullToRefresh';
 
 import { OperatorProfileSetup } from './components/auth/OperatorProfileSetup';
 import { HeadTeacherProfileSetup } from './components/auth/HeadTeacherProfileSetup';
+import { NotificationToastBanner } from './components/notifications/NotificationToastBanner';
 
 const AppContent: React.FC = () => {
   const {
@@ -43,6 +44,10 @@ const AppContent: React.FC = () => {
     completeHeadTeacherSetup,
     logout,
     currentTab,
+    setCurrentTab,
+    setActiveSchoolId,
+    activeToasts,
+    dismissToast,
     isAIAssistantOpen,
     setIsAIAssistantOpen,
     isEditProfileOpen,
@@ -128,10 +133,10 @@ const AppContent: React.FC = () => {
 
   return (
     <PullToRefresh>
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans transition-colors duration-200 w-full max-w-full overflow-x-hidden">
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans transition-colors duration-200 w-full max-w-full overflow-x-clip">
         <Header />
 
-        <main className="flex-1 max-w-7xl w-full mx-auto px-2.5 sm:px-4 py-3 sm:py-5 pb-24 sm:pb-20 overflow-x-hidden">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-2.5 sm:px-4 py-3 sm:py-5 pb-24 sm:pb-20 overflow-x-clip">
           {currentTab === 'dashboard' && <OperatorDashboard />}
           {currentTab === 'schools' && <SchoolDirectory />}
           {currentTab === 'students' && <StudentManager />}
@@ -166,6 +171,16 @@ const AppContent: React.FC = () => {
         <OfflineIndicator />
         <GlobalSearchModal />
         <PhotoDocumentViewer />
+
+        {/* Real-time Push Notification Floating Toast Banners */}
+        <NotificationToastBanner
+          toasts={activeToasts}
+          onDismiss={dismissToast}
+          onNavigate={(tab, schoolId) => {
+            if (schoolId) setActiveSchoolId(schoolId);
+            setCurrentTab(tab);
+          }}
+        />
 
         {/* Global Edit Profile Modal for Operators and HTs */}
         <EditProfileModal

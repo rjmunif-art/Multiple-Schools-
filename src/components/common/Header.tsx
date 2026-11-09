@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PWAInstallButton } from './PWAInstallButton';
 import { SideMenuDrawer } from './SideMenuDrawer';
+import { NotificationCenterDrawer } from '../notifications/NotificationCenterDrawer';
 import {
   School as SchoolIcon,
   Search,
@@ -299,52 +300,31 @@ export const Header: React.FC = () => {
             {/* Notifications Bell */}
             <div className="relative">
               <button
-                onClick={() => setShowNotifMenu(!showNotifMenu)}
-                className="relative p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white transition cursor-pointer"
-                title="Notifications"
-                aria-label="Notifications"
+                onClick={() => setShowNotifMenu(true)}
+                className={`relative p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border text-slate-200 hover:text-white transition cursor-pointer ${
+                  unreadNotifs.some(n => n.priority === 'urgent')
+                    ? 'border-rose-500 ring-2 ring-rose-500/60 shadow-lg shadow-rose-950/60 animate-pulse'
+                    : 'border-slate-700'
+                }`}
+                title="Open Push Alert & Notification Center"
+                aria-label="Open Notifications"
               >
-                <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
+                <Bell className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                  unreadNotifs.some(n => n.priority === 'urgent') ? 'text-rose-400' : 'text-slate-300'
+                }`} />
                 {unreadNotifs.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  <span className={`absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-white text-[9px] font-black flex items-center justify-center shadow-md ${
+                    unreadNotifs.some(n => n.priority === 'urgent') ? 'bg-rose-600 animate-bounce' : 'bg-emerald-600'
+                  }`}>
                     {unreadNotifs.length}
                   </span>
                 )}
               </button>
 
-              {showNotifMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowNotifMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1.5 w-72 sm:w-80 rounded-2xl bg-slate-900 text-white shadow-2xl border border-slate-700 p-2.5 z-50">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                      <span className="text-xs font-bold text-white">System Alerts</span>
-                      {unreadNotifs.length > 0 && (
-                        <button
-                          onClick={markAllNotificationsRead}
-                          className="text-[10px] text-emerald-400 hover:underline cursor-pointer"
-                        >
-                          Mark all read
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/60 mt-1">
-                      {notifications.length === 0 ? (
-                        <div className="p-3 text-center text-xs text-slate-400">No notifications</div>
-                      ) : (
-                        notifications.map(n => (
-                          <div key={n.id} className={`p-2 text-xs ${n.isRead ? 'opacity-70' : 'bg-slate-800/50 rounded-lg'}`}>
-                            <div className="font-semibold text-slate-200 flex items-center justify-between">
-                              <span className="text-[11px] truncate">{n.title}</span>
-                              <span className="text-[9px] text-slate-400 shrink-0">{new Date(n.date).toLocaleDateString()}</span>
-                            </div>
-                            <p className="text-[10px] text-slate-300 mt-0.5 leading-snug">{n.message}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
+              <NotificationCenterDrawer
+                isOpen={showNotifMenu}
+                onClose={() => setShowNotifMenu(false)}
+              />
             </div>
 
             {/* User Account / Role Badge */}

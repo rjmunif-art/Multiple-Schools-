@@ -11,11 +11,10 @@ import {
   onSnapshot,
   Unsubscribe,
   writeBatch,
-  limit,
 } from 'firebase/firestore';
 import { User as FirebaseUser } from 'firebase/auth';
 import { AppDatabase } from './storage';
-import { UserAccount, School, SchoolInvite, Student, SystemNotification } from '../types';
+import { UserAccount, School, SchoolInvite, Student } from '../types';
 import { DEFAULT_SETTINGS } from '../data/sampleData';
 import { compressBase64Image } from './imageUtils';
 
@@ -639,7 +638,6 @@ class FirebaseSyncService {
         const allIssues: any[] = [];
         const allTasks: any[] = [];
         const allDocs: any[] = [];
-        const allNotifs: SystemNotification[] = [];
 
         for (const school of schools) {
           try {
@@ -659,18 +657,10 @@ class FirebaseSyncService {
               if (d.tasks) allTasks.push(...d.tasks);
               if (d.documents) allDocs.push(...d.documents);
             }
-
-            // Also load recent notifications for this school
-            try {
-              const notifsSnap = await getDocs(query(collection(db, 'schools', school.id, 'notifications'), limit(30)));
-              notifsSnap.docs.forEach(nd => allNotifs.push(nd.data() as SystemNotification));
-            } catch {}
           } catch (e) {
             console.warn(`[Firestore] Could not load data for school ${school.id}:`, e);
           }
         }
-
-        allNotifs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         return {
           users: [operatorUser],
@@ -686,7 +676,7 @@ class FirebaseSyncService {
           issues: allIssues,
           tasks: allTasks,
           documents: allDocs,
-          notifications: allNotifs,
+          notifications: [],
           settings: DEFAULT_SETTINGS,
         };
       }
@@ -850,15 +840,6 @@ class FirebaseSyncService {
       const dataSnap = await getDoc(schoolDataRef);
       const d = dataSnap.exists() ? dataSnap.data() : {};
 
-      const htNotifs: SystemNotification[] = [];
-      try {
-        const notifsSnap = await getDocs(query(collection(db, 'schools', schoolId, 'notifications'), limit(30)));
-        notifsSnap.docs.forEach(nd => htNotifs.push(nd.data() as SystemNotification));
-        htNotifs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      } catch (ne) {
-        console.warn('[Firestore] Could not load HT notifications:', ne);
-      }
-
       return {
         users: [htUser],
         schools: [schoolData],
@@ -873,7 +854,7 @@ class FirebaseSyncService {
         issues: d.issues || [],
         tasks: d.tasks || [],
         documents: d.documents || [],
-        notifications: htNotifs,
+        notifications: [],
         settings: DEFAULT_SETTINGS,
       };
     } catch (err: any) {
@@ -1092,72 +1073,6 @@ class FirebaseSyncService {
       console.warn('[Firestore] Profile update error:', e.message);
       return false;
     }
-  }
-
-  /**
-   * Pushes a real-time notification to Firestore under schools/{schoolId}/notifications/{notifId}
-   */
-  public async pushNotification(notification: SystemNotification): Promise<void> {
-    try {
-      if (notification.schoolId) {
-        const notifRef = doc(db, 'schools', notification.schoolId, 'notifications', notification.id);
-        await setDoc(notifRef, sanitizeForFirestore(notification));
-      }
-    } catch (e: any) {
-      console.warn('[Firestore] Notification push error:', e.message);
-    }
-  }
-
-  /**
-   * Subscribes to real-time notifications for user schools
-   */
-  public subscribeToRealtimeNotifications(
-    currentUser: UserAccount,
-    schools: School[],
-    onNewNotification: (notif: SystemNotification, isLiveEvent: boolean) => void
-  ): Unsubscribe {
-    const unsubs: Unsubscribe[] = [];
-    const isHT = currentUser.role === 'head_teacher' || currentUser.role === 'headTeacher';
-    const schoolIds = isHT
-      ? (currentUser.schoolId ? [currentUser.schoolId] : [])
-      : schools.map(s => s.id);
-
-    const initialLoadDone = new Set<string>();
-
-    schoolIds.forEach(schId => {
-      try {
-        const notifsCol = collection(db, 'schools', schId, 'notifications');
-        const q = query(notifsCol, limit(35));
-        let isInitial = true;
-
-        const unsub = onSnapshot(
-          q,
-          snapshot => {
-            snapshot.docChanges().forEach(change => {
-              if (change.type === 'added') {
-                const notif = change.doc.data() as SystemNotification;
-                const isLive = !isInitial && !initialLoadDone.has(notif.id);
-                initialLoadDone.add(notif.id);
-                onNewNotification(notif, isLive);
-              }
-            });
-            isInitial = false;
-          },
-          err => {
-            console.warn(`[Firestore] Notification listener warning for school ${schId}:`, err.message);
-          }
-        );
-
-        unsubs.push(unsub);
-        this.activeUnsubscribes.push(unsub);
-      } catch (err: any) {
-        console.warn(`[Firestore] Failed to attach notification listener for ${schId}:`, err.message);
-      }
-    });
-
-    return () => {
-      unsubs.forEach(u => u());
-    };
   }
 
   public cleanup(): void {

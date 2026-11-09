@@ -39,28 +39,6 @@
         "settings": { "type": "object" },
         "updatedAt": { "type": "string" }
       }
-    },
-    "Notification": {
-      "title": "Notification",
-      "description": "Real-time push notification alert for school state changes",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "type": { "type": "string" },
-        "priority": { "type": "string" },
-        "title": { "type": "string" },
-        "message": { "type": "string" },
-        "schoolId": { "type": "string" },
-        "schoolName": { "type": "string" },
-        "targetRole": { "type": "string" },
-        "actorRole": { "type": "string" },
-        "actorName": { "type": "string" },
-        "actorUid": { "type": "string" },
-        "actionTab": { "type": "string" },
-        "date": { "type": "string" },
-        "isRead": { "type": "boolean" }
-      },
-      "required": ["id", "type", "title", "message", "date"]
     }
   },
   "firestore": {
@@ -71,10 +49,6 @@
     "/users/{userId}/data/{dataId}": {
       "schema": { "$ref": "#/entities/UserDatabase" },
       "description": "User's synchronized schools, students, teachers, and attendance records"
-    },
-    "/schools/{schoolId}/notifications/{notificationId}": {
-      "schema": { "$ref": "#/entities/Notification" },
-      "description": "Real-time synchronized push alerts between Head Teachers and Operators"
     }
   }
 }

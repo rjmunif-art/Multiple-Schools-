@@ -392,37 +392,14 @@ export interface SchoolDocument {
   notes?: string;
 }
 
-export type NotificationPriority = 'urgent' | 'high' | 'medium' | 'low';
-
-export type NotificationCategory =
-  | 'attendance'
-  | 'task'
-  | 'issue'
-  | 'visit'
-  | 'result'
-  | 'sync'
-  | 'payroll'
-  | 'student'
-  | 'staff'
-  | 'schedule'
-  | 'admin';
-
 export interface SystemNotification {
   id: string;
-  type: NotificationCategory;
-  priority?: NotificationPriority;
+  type: 'attendance' | 'task' | 'issue' | 'visit' | 'result' | 'sync' | 'payroll';
   title: string;
   message: string;
   schoolId?: string;
-  schoolName?: string;
-  targetRole?: 'all' | 'operator' | 'head_teacher';
-  actorRole?: 'operator' | 'head_teacher' | 'system';
-  actorName?: string;
-  actorUid?: string;
-  actionTab?: string;
   date: string;
   isRead: boolean;
-  metadata?: Record<string, any>;
 }
 
 export interface AppSettings {

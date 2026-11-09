@@ -20,7 +20,6 @@ import {
 } from '../types';
 import { storageService, AppDatabase, SyncMutation } from '../services/storage';
 import { firebaseSync } from '../services/firebaseSync';
-import { notificationService } from '../services/notificationService';
 import {
   auth,
   signInWithGoogle,
@@ -144,11 +143,6 @@ interface AppContextType {
 
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
-  deleteNotification: (id: string) => void;
-  clearAllNotifications: () => void;
-  dispatchNotification: (notification: SystemNotification) => void;
-  activeToasts: SystemNotification[];
-  dismissToast: (id: string) => void;
   updateSettings: (newSettings: Partial<AppSettings>) => void;
   resetDemoData: () => void;
   loadDemoDataset: () => void;
@@ -768,86 +762,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
-  // Real-Time Notification & In-App Toast Engine
-  const [activeToasts, setActiveToasts] = useState<SystemNotification[]>([]);
-
-  const dismissToast = useCallback((id: string) => {
-    setActiveToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
-
-  const dispatchNotification = useCallback((notification: SystemNotification) => {
-    // 1. Add to local notifications state
-    const updated = [notification, ...dbRef.current.notifications.filter(n => n.id !== notification.id)];
-    persistDatabase({ ...dbRef.current, notifications: updated });
-
-    // 2. Play sound chime
-    notificationService.playChime(notification.priority);
-
-    // 3. Show live in-app toast
-    setActiveToasts(prev => [notification, ...prev.filter(t => t.id !== notification.id)].slice(0, 3));
-    if (notification.priority !== 'urgent') {
-      setTimeout(() => {
-        setActiveToasts(prev => prev.filter(t => t.id !== notification.id));
-      }, 6500);
-    }
-
-    // 4. Send browser OS push if enabled
-    notificationService.fireWebPushNotification(notification);
-
-    // 5. Sync to Firestore in real time
-    firebaseSync.pushNotification(notification).catch(() => {});
-  }, [persistDatabase]);
-
-  const deleteNotification = useCallback((id: string) => {
-    const updated = dbRef.current.notifications.filter(n => n.id !== id);
-    persistDatabase({ ...dbRef.current, notifications: updated });
-    setActiveToasts(prev => prev.filter(t => t.id !== id));
-  }, [persistDatabase]);
-
-  const clearAllNotifications = useCallback(() => {
-    persistDatabase({ ...dbRef.current, notifications: [] });
-    setActiveToasts([]);
-  }, [persistDatabase]);
-
-  // Real-time Firestore notification listener across schools
-  useEffect(() => {
-    if (!currentUser || authStatus !== 'authenticated') return;
-
-    const unsub = firebaseSync.subscribeToRealtimeNotifications(
-      currentUser,
-      db.schools,
-      (incomingNotif, isLiveEvent) => {
-        if (!notificationService.isNotificationForUser(incomingNotif, currentUserRef.current)) {
-          return;
-        }
-
-        setDb(curr => {
-          if (curr.notifications.some(n => n.id === incomingNotif.id)) return curr;
-          return {
-            ...curr,
-            notifications: [incomingNotif, ...curr.notifications],
-          };
-        });
-
-        // Trigger real-time sound and toast if it's a live notification originating from another user
-        if (isLiveEvent && incomingNotif.actorUid !== currentUserRef.current?.id) {
-          notificationService.playChime(incomingNotif.priority);
-          notificationService.fireWebPushNotification(incomingNotif);
-          setActiveToasts(prev => [incomingNotif, ...prev.filter(t => t.id !== incomingNotif.id)].slice(0, 3));
-          if (incomingNotif.priority !== 'urgent') {
-            setTimeout(() => {
-              setActiveToasts(prev => prev.filter(t => t.id !== incomingNotif.id));
-            }, 6500);
-          }
-        }
-      }
-    );
-
-    return () => {
-      unsub();
-    };
-  }, [currentUser?.id, authStatus, db.schools]);
-
   // CRUD Actions
   const addSchool = useCallback((schoolData: Omit<School, 'id' | 'createdAt' | 'updatedAt'>) => {
     // Head teachers cannot add schools
@@ -871,14 +785,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateSchool = useCallback((school: School) => {
     const updated = dbRef.current.schools.map(s => s.id === school.id ? { ...school, updatedAt: new Date().toISOString() } : s);
     persistDatabase({ ...dbRef.current, schools: updated });
-
-    const alert = notificationService.buildScheduleAlert({
-      details: `${school.name} details or academic schedule updated`,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const deleteSchool = useCallback((id: string) => {
     const updated = dbRef.current.schools.filter(s => s.id !== id);
@@ -894,20 +801,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updated = [newStudent, ...dbRef.current.students];
     persistDatabase({ ...dbRef.current, students: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === newStudent.schoolId);
-    const alert = notificationService.buildStudentAlert({
-      action: 'admitted',
-      studentName: newStudent.name,
-      grNumber: newStudent.grNumber,
-      grade: newStudent.grade,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-
     return newStudent;
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const batchAddStudents = useCallback((studentsData: Omit<Student, 'id' | 'createdAt' | 'updatedAt'>[]) => {
     const newStudents: Student[] = studentsData.map((s, idx) => ({
@@ -918,73 +813,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
     const updated = [...newStudents, ...dbRef.current.students];
     persistDatabase({ ...dbRef.current, students: updated });
-
-    if (newStudents.length > 0) {
-      const school = dbRef.current.schools.find(s => s.id === newStudents[0].schoolId);
-      const alert = notificationService.buildStudentAlert({
-        action: 'admitted',
-        studentName: `${newStudents.length} Students (Batch)`,
-        grade: newStudents[0].grade,
-        school,
-        actor: currentUserRef.current,
-      });
-      dispatchNotification(alert);
-    }
     return newStudents;
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const updateStudent = useCallback((student: Student) => {
-    const oldStudent = dbRef.current.students.find(s => s.id === student.id);
-    const isStatusChange = oldStudent && oldStudent.status !== student.status;
     const updated = dbRef.current.students.map(s => s.id === student.id ? { ...student, updatedAt: new Date().toISOString() } : s);
     persistDatabase({ ...dbRef.current, students: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === student.schoolId);
-    const alert = notificationService.buildStudentAlert({
-      action: isStatusChange ? 'status_changed' : 'updated',
-      studentName: student.name,
-      grNumber: student.grNumber,
-      grade: student.grade,
-      newStatus: student.status,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const deleteStudent = useCallback((id: string) => {
-    const st = dbRef.current.students.find(s => s.id === id);
     const updated = dbRef.current.students.filter(s => s.id !== id);
     persistDatabase({ ...dbRef.current, students: updated });
-
-    if (st) {
-      const school = dbRef.current.schools.find(s => s.id === st.schoolId);
-      const alert = notificationService.buildStudentAlert({
-        action: 'deleted',
-        studentName: st.name,
-        school,
-        actor: currentUserRef.current,
-      });
-      dispatchNotification(alert);
-    }
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const promoteStudents = useCallback((studentIds: string[], nextGrade: string) => {
     const set = new Set(studentIds);
     const updated = dbRef.current.students.map(s => set.has(s.id) ? { ...s, class: nextGrade, updatedAt: new Date().toISOString() } : s);
     persistDatabase({ ...dbRef.current, students: updated });
-
-    const sampleSt = dbRef.current.students.find(s => set.has(s.id));
-    const school = dbRef.current.schools.find(s => s.id === sampleSt?.schoolId);
-    const alert = notificationService.buildStudentAlert({
-      action: 'promoted',
-      studentName: `${studentIds.length} Students`,
-      grade: nextGrade,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const transferStudent = useCallback((studentId: string, toSchoolId: string) => {
     const updated = dbRef.current.students.map(s => s.id === studentId ? { ...s, schoolId: toSchoolId, updatedAt: new Date().toISOString() } : s);
@@ -1000,54 +846,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updated = [newStaff, ...dbRef.current.staff];
     persistDatabase({ ...dbRef.current, staff: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === newStaff.schoolId);
-    const alert = notificationService.buildStaffAlert({
-      action: 'added',
-      staffName: newStaff.name,
-      designation: newStaff.designation,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-
     return newStaff;
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const updateStaff = useCallback((staffMember: Staff) => {
-    const old = dbRef.current.staff.find(s => s.id === staffMember.id);
-    const isStatusChange = old && old.status !== staffMember.status;
     const updated = dbRef.current.staff.map(s => s.id === staffMember.id ? { ...staffMember, updatedAt: new Date().toISOString() } : s);
     persistDatabase({ ...dbRef.current, staff: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === staffMember.schoolId);
-    const alert = notificationService.buildStaffAlert({
-      action: isStatusChange ? 'status_changed' : 'updated',
-      staffName: staffMember.name,
-      designation: staffMember.designation,
-      newStatus: staffMember.status,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const deleteStaff = useCallback((id: string) => {
-    const stf = dbRef.current.staff.find(s => s.id === id);
     const updated = dbRef.current.staff.filter(s => s.id !== id);
     persistDatabase({ ...dbRef.current, staff: updated });
-
-    if (stf) {
-      const school = dbRef.current.schools.find(s => s.id === stf.schoolId);
-      const alert = notificationService.buildStaffAlert({
-        action: 'deleted',
-        staffName: stf.name,
-        school,
-        actor: currentUserRef.current,
-      });
-      dispatchNotification(alert);
-    }
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const saveStudentAttendance = useCallback((records: Omit<StudentDailyAttendance, 'id' | 'createdAt'> | Omit<StudentDailyAttendance, 'id' | 'createdAt'>[]) => {
     const recsArray = Array.isArray(records) ? records : [records];
@@ -1062,31 +872,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const filtered = dbRef.current.studentAttendance.filter(a => !keys.has(`${a.schoolId}_${a.date}_${a.grade}`));
     const updated = [...newRecs, ...filtered];
     persistDatabase({ ...dbRef.current, studentAttendance: updated });
-
-    // Trigger comprehensive push alert
-    if (newRecs.length > 0) {
-      const primarySchool = dbRef.current.schools.find(s => s.id === newRecs[0].schoolId);
-      const totalStudents = newRecs.reduce((sum, r) => sum + (r.totalStudents || 0), 0);
-      const presentStudents = newRecs.reduce((sum, r) => sum + (r.present || 0), 0);
-      const absentStudents = newRecs.reduce((sum, r) => sum + (r.absent || 0), 0);
-      const leaveStudents = newRecs.reduce((sum, r) => sum + (r.leave || 0), 0);
-      const lateStudents = newRecs.reduce((sum, r) => sum + (r.late || 0), 0);
-      const grade = newRecs.length > 1 ? 'all' : (newRecs[0].grade || 'all');
-
-      const alert = notificationService.buildAttendanceAlert({
-        school: primarySchool,
-        actor: currentUserRef.current,
-        total: totalStudents,
-        present: presentStudents,
-        absent: absentStudents,
-        leave: leaveStudents,
-        late: lateStudents,
-        grade,
-        isStaff: false,
-      });
-      dispatchNotification(alert);
-    }
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const saveStaffAttendance = useCallback((records: Omit<StaffDailyAttendance, 'id' | 'createdAt'>[]) => {
     const newRecs: StaffDailyAttendance[] = records.map(r => ({
@@ -1098,29 +884,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const filtered = dbRef.current.staffAttendance.filter(a => !keys.has(`${a.staffId}_${a.date}`));
     const updated = [...newRecs, ...filtered];
     persistDatabase({ ...dbRef.current, staffAttendance: updated });
-
-    if (newRecs.length > 0) {
-      const school = dbRef.current.schools.find(s => s.id === (newRecs[0].schoolId || currentUserRef.current?.schoolId));
-      const total = newRecs.length;
-      const present = newRecs.filter(r => r.status === 'Present').length;
-      const absent = newRecs.filter(r => r.status === 'Absent').length;
-      const leave = newRecs.filter(r => r.status === 'Leave').length;
-      const late = newRecs.filter(r => r.status === 'Late').length;
-
-      const alert = notificationService.buildAttendanceAlert({
-        school,
-        actor: currentUserRef.current,
-        total,
-        present,
-        absent,
-        leave,
-        late,
-        grade: 'Staff',
-        isStaff: true,
-      });
-      dispatchNotification(alert);
-    }
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const addExamination = useCallback((examData: Omit<Examination, 'id'>) => {
     const newExam: Examination = {
@@ -1193,17 +957,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (newRecs.length > 0) {
       const updated = [...newRecs, ...dbRef.current.payroll];
       persistDatabase({ ...dbRef.current, payroll: updated });
-
-      const school = dbRef.current.schools.find(s => s.id === schoolId);
-      const alert = notificationService.buildPayrollAlert({
-        month,
-        school,
-        actor: currentUserRef.current,
-        action: 'generated',
-      });
-      dispatchNotification(alert);
     }
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const confirmPayrollReceipt = useCallback((payrollId: string, remarks?: string) => {
     const updated = dbRef.current.payroll.map(p => p.id === payrollId ? {
@@ -1224,16 +979,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     } : p);
     persistDatabase({ ...dbRef.current, payroll: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === schoolId);
-    const alert = notificationService.buildPayrollAlert({
-      month,
-      school,
-      actor: currentUserRef.current,
-      action: 'paid',
-    });
-    dispatchNotification(alert);
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const addSchoolVisit = useCallback((visit: Omit<SchoolVisit, 'id' | 'createdAt'>) => {
     const newVisit: SchoolVisit = {
@@ -1243,18 +989,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updated = [newVisit, ...dbRef.current.visits];
     persistDatabase({ ...dbRef.current, visits: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === newVisit.schoolId);
-    const alert = notificationService.buildVisitAlert({
-      visitorName: newVisit.visitorName,
-      visitorRole: newVisit.visitType,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-
     return newVisit;
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const updateSchoolVisit = useCallback((visit: SchoolVisit) => {
     const updated = dbRef.current.visits.map(v => v.id === visit.id ? visit : v);
@@ -1270,36 +1006,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updated = [newIssue, ...dbRef.current.issues];
     persistDatabase({ ...dbRef.current, issues: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === newIssue.schoolId);
-    const alert = notificationService.buildIssueAlert({
-      action: 'reported',
-      issueTitle: newIssue.description.slice(0, 50),
-      severity: newIssue.priority,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-
     return newIssue;
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const updateIssue = useCallback((issue: SchoolIssue) => {
-    const old = dbRef.current.issues.find(i => i.id === issue.id);
-    const isResolved = old && old.status !== 'Resolved' && issue.status === 'Resolved';
     const updated = dbRef.current.issues.map(i => i.id === issue.id ? { ...issue, updatedAt: new Date().toISOString() } : i);
     persistDatabase({ ...dbRef.current, issues: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === issue.schoolId);
-    const alert = notificationService.buildIssueAlert({
-      action: isResolved ? 'resolved' : 'updated',
-      issueTitle: issue.description.slice(0, 50),
-      severity: issue.priority,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const deleteIssue = useCallback((id: string) => {
     const updated = dbRef.current.issues.filter(i => i.id !== id);
@@ -1313,36 +1026,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updated = [newTask, ...dbRef.current.tasks];
     persistDatabase({ ...dbRef.current, tasks: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === newTask.schoolId);
-    const alert = notificationService.buildTaskAlert({
-      action: 'created',
-      taskTitle: newTask.title,
-      priority: newTask.priority,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-
     return newTask;
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const updateTask = useCallback((task: SchoolTask) => {
-    const old = dbRef.current.tasks.find(t => t.id === task.id);
-    const isCompleted = old && old.status !== 'Completed' && task.status === 'Completed';
     const updated = dbRef.current.tasks.map(t => t.id === task.id ? task : t);
     persistDatabase({ ...dbRef.current, tasks: updated });
-
-    const school = dbRef.current.schools.find(s => s.id === task.schoolId);
-    const alert = notificationService.buildTaskAlert({
-      action: isCompleted ? 'completed' : 'updated',
-      taskTitle: task.title,
-      priority: task.priority,
-      school,
-      actor: currentUserRef.current,
-    });
-    dispatchNotification(alert);
-  }, [persistDatabase, dispatchNotification]);
+  }, [persistDatabase]);
 
   const deleteTask = useCallback((id: string) => {
     const updated = dbRef.current.tasks.filter(t => t.id !== id);
@@ -1581,11 +1271,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     markNotificationRead,
     markAllNotificationsRead,
-    deleteNotification,
-    clearAllNotifications,
-    dispatchNotification,
-    activeToasts,
-    dismissToast,
     updateSettings,
     resetDemoData,
     loadDemoDataset,

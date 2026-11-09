@@ -477,9 +477,9 @@ export const AttendanceSystem: React.FC = () => {
             </div>
           </div>
 
-          {/* Real-time calculated attendance preview banner */}
-          <div className="p-3 rounded-2xl bg-emerald-950/70 border border-emerald-700/60 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex flex-wrap items-center gap-4">
+          {/* Real-time calculated attendance preview banner (Sticky on top while scrolling student roster) */}
+          <div className="sticky top-[68px] sm:top-[74px] z-20 p-3 rounded-2xl bg-slate-900/95 dark:bg-emerald-950/95 backdrop-blur-md border border-emerald-500/70 shadow-xl shadow-black/30 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <div>
                 <span className="text-[10px] text-emerald-400 block">Total Students</span>
                 <strong className="text-base text-white">{calculatedTotal}</strong>
@@ -515,7 +515,7 @@ export const AttendanceSystem: React.FC = () => {
 
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5 active:scale-98"
               >
                 <Save className="w-4 h-4" />
                 Save Attendance

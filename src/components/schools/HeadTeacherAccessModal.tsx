@@ -14,7 +14,8 @@ import {
   ShieldAlert,
   Send,
   Building,
-  Sparkles
+  Sparkles,
+  Check
 } from 'lucide-react';
 
 interface HeadTeacherAccessModalProps {
@@ -133,12 +134,19 @@ export const HeadTeacherAccessModal: React.FC<HeadTeacherAccessModalProps> = ({
     });
   }
   for (const inv of activeInvites) {
-    if (!allHTs.some(h => h.email.toLowerCase() === inv.email.toLowerCase())) {
+    const isVerified =
+      inv.status === 'verified' ||
+      !!inv.headTeacherUid ||
+      (school.headTeacherEmail?.toLowerCase() === inv.email.toLowerCase() && !!school.headTeacherUid);
+    const existing = allHTs.find(h => h.email.toLowerCase() === inv.email.toLowerCase());
+    if (existing) {
+      if (isVerified) existing.isActive = true;
+    } else {
       allHTs.push({
         email: inv.email.toLowerCase(),
         name: inv.name || 'Invited Head Teacher',
         phone: inv.phone,
-        isActive: false,
+        isActive: isVerified,
       });
     }
   }
@@ -237,12 +245,19 @@ export const HeadTeacherAccessModal: React.FC<HeadTeacherAccessModalProps> = ({
 
                     <div className="pt-2 border-t border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400">
                       <span>Contact: {ht.phone || 'Not specified'}</span>
-                      <span className={`px-2 py-0.5 rounded-full font-semibold border ${
+                      <span className={`px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 shadow-xs ${
                         ht.isActive
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                           : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                       }`}>
-                        {ht.isActive ? 'Active & Logged In' : 'Invite Sent (Pending Google Sign-in)'}
+                        {ht.isActive ? (
+                          <>
+                            <span>Verified</span>
+                            <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                          </>
+                        ) : (
+                          <span>Pending Google Sign-In</span>
+                        )}
                       </span>
                     </div>
                   </div>

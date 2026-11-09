@@ -52,6 +52,9 @@ export interface SchoolInvite {
   operatorUid: string;
   operatorName?: string;
   createdAt: string;
+  status?: 'pending' | 'verified';
+  headTeacherUid?: string;
+  verifiedAt?: string;
 }
 
 export interface AssistantChat {

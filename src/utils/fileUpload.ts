@@ -3,7 +3,7 @@
  */
 
 export async function pickImageFromFileMemory(options?: { maxWidth?: number; maxHeight?: number; quality?: number; capture?: boolean }): Promise<string> {
-  const { maxWidth = 1000, maxHeight = 1000, quality = 0.8, capture = false } = options || {};
+  const { maxWidth = 640, maxHeight = 640, quality = 0.68, capture = false } = options || {};
 
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
@@ -38,7 +38,7 @@ export async function pickImageFromFileMemory(options?: { maxWidth?: number; max
   });
 }
 
-export function compressImageFile(file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.8): Promise<string> {
+export function compressImageFile(file: File, maxWidth = 640, maxHeight = 640, quality = 0.68): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (event) => {

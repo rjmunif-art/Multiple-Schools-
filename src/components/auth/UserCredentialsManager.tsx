@@ -249,6 +249,10 @@ export const UserCredentialsManager: React.FC = () => {
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {schoolInvites.map(inv => {
                 const sch = schools.find(s => s.id === inv.schoolId);
+                const isVerified =
+                  inv.status === 'verified' ||
+                  !!inv.headTeacherUid ||
+                  (!!sch?.headTeacherUid && sch.headTeacherEmail?.toLowerCase() === inv.email.toLowerCase());
                 return (
                   <div key={inv.email} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                     <div className="flex items-start gap-3">
@@ -268,9 +272,16 @@ export const UserCredentialsManager: React.FC = () => {
                             {inv.email}
                           </span>
                           {inv.phone && <span>Phone: {inv.phone}</span>}
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300">
-                            Pending Google Sign-In
-                          </span>
+                          {isVerified ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 shadow-xs">
+                              <span>Verified</span>
+                              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-medium">
+                              Pending Google Sign-In
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1.5 font-medium">
                           <School className="w-3.5 h-3.5" />

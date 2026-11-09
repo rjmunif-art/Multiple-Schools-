@@ -257,7 +257,12 @@ export const StudentManager: React.FC = () => {
   ) => {
     try {
       setUploadingField(field);
-      const dataUrl = await pickImageFromFileMemory({ maxWidth: 1200, maxHeight: 1200, quality: 0.82 });
+      const isProfile = field === 'profile';
+      const dataUrl = await pickImageFromFileMemory(
+        isProfile
+          ? { maxWidth: 280, maxHeight: 280, quality: 0.7 }
+          : { maxWidth: 640, maxHeight: 640, quality: 0.65 }
+      );
       
       if (field === 'profile') {
         // If updating profile pic, automatically archive current photo into photoHistory

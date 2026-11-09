@@ -549,10 +549,14 @@ export const HeadTeacherAIAssistantModal: React.FC<HeadTeacherAIAssistantModalPr
       }
     } catch (err: any) {
       console.error('AI chat failed:', err);
+      let rawMsg = err?.message || 'Could not communicate with SchoolSync Assistant. Please try again.';
+      if (typeof rawMsg === 'string' && rawMsg.startsWith('Error: ')) {
+        rawMsg = rawMsg.slice(7);
+      }
       const errorMsg: Message = {
         id: 'err-' + Date.now(),
         sender: 'ai',
-        text: `Error: ${err.message || 'Could not communicate with SchoolSync Assistant. Please try again.'}`,
+        text: `Error: ${rawMsg}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         error: true,
       };
@@ -711,7 +715,7 @@ export const HeadTeacherAIAssistantModal: React.FC<HeadTeacherAIAssistantModalPr
                   SchoolSync Assistant
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold uppercase tracking-wider hidden sm:inline">
-                  Gemini 3.8 Flash
+                  Gemini Flash AI
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 truncate">

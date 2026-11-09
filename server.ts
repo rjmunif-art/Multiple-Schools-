@@ -1423,25 +1423,30 @@ CRITICAL RULES:
     });
 
     let reply = '';
-    const modelsToAttempt = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+    // gemini-3.1-flash-lite provides 1,500 requests/day quota & sub-second speed on free tier;
+    // gemini-3.8-flash provides high reasoning but has a 20 requests/day limit on free tier.
+    const modelsToAttempt = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
     let lastError: any = null;
 
     for (const model of modelsToAttempt) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
+      const modelTimeoutMs = model === 'gemini-3.8-flash' ? 6000 : 20000;
+      const maxAttempts = model === 'gemini-3.8-flash' ? 1 : 2;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Model ${model} request timed out`)), 14000)
+            setTimeout(() => reject(new Error(`Model ${model} request timed out`)), modelTimeoutMs)
           );
+
+          const config: any = { systemInstruction };
+          if (model === 'gemini-3.8-flash') {
+            config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+          }
 
           const callPromise = ai.models.generateContent({
             model,
             contents,
-            config: {
-              systemInstruction,
-              thinkingConfig: {
-                thinkingLevel: ThinkingLevel.LOW,
-              },
-            },
+            config,
           });
 
           const response = await Promise.race([callPromise, timeoutPromise]);
@@ -1453,16 +1458,24 @@ CRITICAL RULES:
         } catch (callErr: any) {
           lastError = callErr;
           const errMsg = String(callErr?.message || callErr);
-          console.warn(`[AI Attempt ${attempt} on ${model}]:`, errMsg);
+          const is429 = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED');
+
+          if (is429) {
+            console.log(`[AI Model Notice] ${model} free-tier daily quota limit reached, attempting alternative model...`);
+          } else {
+            console.log(`[AI Model Notice] ${model} attempt ${attempt} unavailable, checking fallback...`);
+          }
 
           const isRetryable =
-            errMsg.includes('503') ||
-            errMsg.includes('overloaded') ||
-            errMsg.includes('UNAVAILABLE') ||
-            errMsg.includes('Service Unavailable') ||
-            errMsg.includes('timed out');
+            !is429 && (
+              errMsg.includes('503') ||
+              errMsg.includes('overloaded') ||
+              errMsg.includes('UNAVAILABLE') ||
+              errMsg.includes('Service Unavailable') ||
+              errMsg.includes('timed out')
+            );
 
-          if (isRetryable && attempt < 2) {
+          if (isRetryable && attempt < maxAttempts) {
             await new Promise(r => setTimeout(r, 400));
             continue;
           }
@@ -1578,10 +1591,28 @@ CRITICAL RULES:
       structuredAction,
     });
   } catch (err: any) {
-    console.error('[Gemini AI Error in /api/ai/chat]:', err);
+    let errMsg = err?.message || 'An error occurred while communicating with Gemini AI.';
+    try {
+      if (typeof errMsg === 'string' && (errMsg.startsWith('{') || errMsg.includes('{"error":'))) {
+        const jsonMatch = errMsg.match(/(\{[\s\S]*\})/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[1]);
+          if (parsed?.error?.message) {
+            errMsg = parsed.error.message;
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota')) {
+      errMsg = 'Daily free AI quota reached on the current project key. You can select or attach a billing-enabled Gemini API key in Settings > Secrets for unlimited requests.';
+    }
+
+    console.error('[Gemini AI /api/ai/chat error]:', errMsg.slice(0, 200));
+
     res.status(500).json({
       success: false,
-      message: err.message || 'An error occurred while communicating with Gemini AI.',
+      message: errMsg,
     });
   }
 });

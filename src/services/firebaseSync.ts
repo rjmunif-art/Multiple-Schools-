@@ -14,11 +14,49 @@ import {
 } from 'firebase/firestore';
 import { User as FirebaseUser } from 'firebase/auth';
 import { AppDatabase } from './storage';
-import { UserAccount, School, SchoolInvite } from '../types';
+import { UserAccount, School, SchoolInvite, Student } from '../types';
 import { DEFAULT_SETTINGS } from '../data/sampleData';
+import { compressBase64Image } from './imageUtils';
 
 function sanitizeForFirestore<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
+}
+
+async function prepareStudentsForFirestore(students: Student[]): Promise<Student[]> {
+  const processed: Student[] = [];
+  for (const st of students) {
+    const s = { ...st };
+    try {
+      if (s.profilePic && s.profilePic.length > 50000) {
+        s.profilePic = await compressBase64Image(s.profilePic, 280, 0.70);
+      }
+      if (s.formBPic && s.formBPic.length > 50000) {
+        s.formBPic = await compressBase64Image(s.formBPic, 640, 0.65);
+      }
+      if (s.fatherNicFrontPic && s.fatherNicFrontPic.length > 50000) {
+        s.fatherNicFrontPic = await compressBase64Image(s.fatherNicFrontPic, 640, 0.65);
+      }
+      if (s.fatherNicPic && s.fatherNicPic.length > 50000) {
+        s.fatherNicPic = s.fatherNicFrontPic || await compressBase64Image(s.fatherNicPic, 640, 0.65);
+      }
+      if (s.fatherNicBackPic && s.fatherNicBackPic.length > 50000) {
+        s.fatherNicBackPic = await compressBase64Image(s.fatherNicBackPic, 640, 0.65);
+      }
+      if (s.motherNicFrontPic && s.motherNicFrontPic.length > 50000) {
+        s.motherNicFrontPic = await compressBase64Image(s.motherNicFrontPic, 640, 0.65);
+      }
+      if (s.motherNicPic && s.motherNicPic.length > 50000) {
+        s.motherNicPic = s.motherNicFrontPic || await compressBase64Image(s.motherNicPic, 640, 0.65);
+      }
+      if (s.motherNicBackPic && s.motherNicBackPic.length > 50000) {
+        s.motherNicBackPic = await compressBase64Image(s.motherNicBackPic, 640, 0.65);
+      }
+    } catch (compErr) {
+      console.warn('[Firestore] Photo optimization warning for student:', st.name, compErr);
+    }
+    processed.push(s);
+  }
+  return processed;
 }
 
 export interface UserCheckResult {
@@ -260,12 +298,22 @@ class FirebaseSyncService {
       console.warn('[Firestore] Error binding head teacher to school document:', e);
     }
 
-    // 3. Delete invite doc
+    // 3. Mark invite doc as verified so the operator dashboard immediately shows Verified with tick
     try {
       const inviteRef = doc(db, 'invites', lowercaseEmail);
-      await deleteDoc(inviteRef);
+      await setDoc(
+        inviteRef,
+        {
+          status: 'verified',
+          headTeacherUid: firebaseUser.uid,
+          verifiedAt: now,
+          name: details.name,
+          phone: details.phone,
+        },
+        { merge: true }
+      );
     } catch (e) {
-      console.warn('[Firestore] Error removing accepted invite doc:', e);
+      console.warn('[Firestore] Error marking accepted invite verified:', e);
     }
 
     return htUser;
@@ -332,6 +380,7 @@ class FirebaseSyncService {
         schoolName,
         operatorUid,
         operatorName,
+        status: 'pending',
         createdAt: new Date().toISOString(),
       };
 
@@ -405,11 +454,31 @@ class FirebaseSyncService {
         if (schoolSnap.exists()) {
           const sch = schoolSnap.data() as School;
           const htEmail = (sch.headTeacherEmail || '').trim().toLowerCase();
+          const hasActiveUid = !!sch.headTeacherUid;
+
+          // Reconcile loaded invites with school document state
+          for (const inv of invites) {
+            if (
+              (htEmail && inv.email.toLowerCase() === htEmail && hasActiveUid) ||
+              inv.status === 'verified' ||
+              !!inv.headTeacherUid
+            ) {
+              inv.status = 'verified';
+              inv.headTeacherUid = inv.headTeacherUid || sch.headTeacherUid;
+            }
+          }
+
           if (htEmail && !invites.some(i => i.email.toLowerCase() === htEmail)) {
             const invRef = doc(db, 'invites', htEmail);
             const invSnap = await getDoc(invRef);
             if (invSnap.exists()) {
-              invites.push({ ...(invSnap.data() as SchoolInvite), email: htEmail });
+              const data = invSnap.data() as SchoolInvite;
+              invites.push({
+                ...data,
+                email: htEmail,
+                status: hasActiveUid || data.status === 'verified' || !!data.headTeacherUid ? 'verified' : 'pending',
+                headTeacherUid: data.headTeacherUid || sch.headTeacherUid,
+              });
             } else {
               invites.push({
                 email: htEmail,
@@ -418,6 +487,8 @@ class FirebaseSyncService {
                 schoolId: sch.id,
                 schoolName: sch.name,
                 operatorUid: sch.ownerUid || operatorUid || '',
+                status: hasActiveUid ? 'verified' : 'pending',
+                headTeacherUid: sch.headTeacherUid,
                 createdAt: sch.updatedAt || new Date().toISOString(),
               });
             }
@@ -831,10 +902,13 @@ class FirebaseSyncService {
           };
           await setDoc(schoolRef, sanitizeForFirestore(schoolPayload), { merge: true });
 
+          const rawStudents = (database.students || []).filter(s => s.schoolId === school.id);
+          const preparedStudents = await prepareStudentsForFirestore(rawStudents);
+
           // Save that specific school's scoped records to schools/{schoolId}/data/main
           const schoolDataRef = doc(db, 'schools', school.id, 'data', 'main');
           const schoolDataPayload = {
-            students: (database.students || []).filter(s => s.schoolId === school.id),
+            students: preparedStudents,
             staff: (database.staff || []).filter(s => s.schoolId === school.id),
             studentAttendance: (database.studentAttendance || []).filter(a => a.schoolId === school.id),
             staffAttendance: (database.staffAttendance || []).filter(a => a.schoolId === school.id),
@@ -846,19 +920,63 @@ class FirebaseSyncService {
             tasks: (database.tasks || []).filter(t => !t.schoolId || t.schoolId === school.id),
             documents: (database.documents || []).filter(d => d.schoolId === school.id),
           };
-          await setDoc(schoolDataRef, sanitizeForFirestore(schoolDataPayload), { merge: true });
+
+          try {
+            await setDoc(schoolDataRef, sanitizeForFirestore(schoolDataPayload), { merge: true });
+          } catch (docErr: any) {
+            console.warn('[Firestore] schoolDataPayload save warning, falling back to subcollection:', docErr?.message);
+            for (const st of preparedStudents) {
+              await setDoc(doc(db, 'schools', school.id, 'students', st.id), sanitizeForFirestore(st), { merge: true });
+            }
+            const lightweightPayload = {
+              ...schoolDataPayload,
+              students: preparedStudents.map(st => ({
+                ...st,
+                profilePic: st.profilePic && st.profilePic.length < 50000 ? st.profilePic : undefined,
+                formBPic: undefined,
+                fatherNicPic: undefined,
+                fatherNicFrontPic: undefined,
+                fatherNicBackPic: undefined,
+                motherNicPic: undefined,
+                motherNicFrontPic: undefined,
+                motherNicBackPic: undefined,
+              })),
+            };
+            await setDoc(schoolDataRef, sanitizeForFirestore(lightweightPayload), { merge: true });
+          }
         }
 
-        // Also save operator backup under users/{uid}/data/database
-        const userBackupRef = doc(db, 'users', currentUser.id, 'data', 'database');
-        await setDoc(userBackupRef, sanitizeForFirestore(database), { merge: true });
+        // Also save operator backup under users/{uid}/data/database (safely stripped of bulky document scans)
+        try {
+          const userBackupRef = doc(db, 'users', currentUser.id, 'data', 'database');
+          const lightweightBackup = {
+            ...database,
+            students: (database.students || []).map(s => ({
+              ...s,
+              profilePic: s.profilePic && s.profilePic.length < 50000 ? s.profilePic : undefined,
+              formBPic: undefined,
+              fatherNicPic: undefined,
+              fatherNicFrontPic: undefined,
+              fatherNicBackPic: undefined,
+              motherNicPic: undefined,
+              motherNicFrontPic: undefined,
+              motherNicBackPic: undefined,
+            })),
+          };
+          await setDoc(userBackupRef, sanitizeForFirestore(lightweightBackup), { merge: true });
+        } catch (backupErr) {
+          console.warn('[Firestore] Operator global backup doc warning (non-fatal):', backupErr);
+        }
       } else {
         // Head Teacher: save only to their assigned school: schools/{schoolId}/data/main
         const schoolId = currentUser.schoolId;
         if (schoolId) {
+          const rawStudents = database.students || [];
+          const preparedStudents = await prepareStudentsForFirestore(rawStudents);
+
           const schoolDataRef = doc(db, 'schools', schoolId, 'data', 'main');
           const schoolDataPayload = {
-            students: database.students || [],
+            students: preparedStudents,
             staff: database.staff || [],
             studentAttendance: database.studentAttendance || [],
             staffAttendance: database.staffAttendance || [],
@@ -870,14 +988,37 @@ class FirebaseSyncService {
             tasks: database.tasks || [],
             documents: database.documents || [],
           };
-          await setDoc(schoolDataRef, sanitizeForFirestore(schoolDataPayload), { merge: true });
+
+          try {
+            await setDoc(schoolDataRef, sanitizeForFirestore(schoolDataPayload), { merge: true });
+          } catch (docErr: any) {
+            console.warn('[Firestore] HT schoolDataPayload save warning, falling back to subcollection:', docErr?.message);
+            for (const st of preparedStudents) {
+              await setDoc(doc(db, 'schools', schoolId, 'students', st.id), sanitizeForFirestore(st), { merge: true });
+            }
+            const lightweightPayload = {
+              ...schoolDataPayload,
+              students: preparedStudents.map(st => ({
+                ...st,
+                profilePic: st.profilePic && st.profilePic.length < 50000 ? st.profilePic : undefined,
+                formBPic: undefined,
+                fatherNicPic: undefined,
+                fatherNicFrontPic: undefined,
+                fatherNicBackPic: undefined,
+                motherNicPic: undefined,
+                motherNicFrontPic: undefined,
+                motherNicBackPic: undefined,
+              })),
+            };
+            await setDoc(schoolDataRef, sanitizeForFirestore(lightweightPayload), { merge: true });
+          }
         }
       }
 
       return { success: true };
     } catch (err: any) {
       console.error('[Firestore] Save error:', err);
-      return { success: false, error: err.message };
+      return { success: false, error: err.message || String(err) };
     }
   }
 

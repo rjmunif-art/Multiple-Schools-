@@ -1,0 +1,40 @@
+[
+  {
+    "device_id": "test1",
+    "user_id": "test_u",
+    "role": "operator",
+    "school_ids": [],
+    "platform": "Android Mobile",
+    "app_version": "3.5.0",
+    "device_name": "Mobile Phone",
+    "device_model": "Android Device",
+    "os_version": "Android",
+    "messaging_token": "",
+    "permission_status": "granted",
+    "notifications_enabled": true,
+    "last_seen_at": "2026-11-10T10:07:15.062Z",
+    "created_at": "2026-11-10T10:07:15.062Z",
+    "updated_at": "2026-11-10T10:07:15.062Z",
+    "last_token_refresh_at": "2026-11-10T10:07:15.062Z",
+    "is_active": true
+  },
+  {
+    "device_id": "smoke_test_device",
+    "user_id": "test_operator",
+    "role": "operator",
+    "school_ids": [],
+    "platform": "Android Mobile",
+    "app_version": "3.5.0",
+    "device_name": "Mobile Phone",
+    "device_model": "Android Device",
+    "os_version": "Android",
+    "messaging_token": "",
+    "permission_status": "granted",
+    "notifications_enabled": false,
+    "last_seen_at": "2026-11-10T10:10:58.772Z",
+    "created_at": "2026-11-10T10:10:58.772Z",
+    "updated_at": "2026-11-10T10:11:07.371Z",
+    "last_token_refresh_at": "2026-11-10T10:10:58.772Z",
+    "is_active": false
+  }
+]

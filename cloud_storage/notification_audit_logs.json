@@ -1,0 +1,27 @@
+[
+  {
+    "id": "notif_log_1794305467371_4ewa",
+    "action": "device_deactivated",
+    "timestamp": "2026-11-10T10:11:07.372Z",
+    "deviceId": "smoke_test_device",
+    "userId": "test_operator"
+  },
+  {
+    "id": "notif_log_1794305458772_vor0",
+    "action": "device_registered",
+    "timestamp": "2026-11-10T10:10:58.772Z",
+    "deviceId": "smoke_test_device",
+    "userId": "test_operator",
+    "platform": "Android Mobile",
+    "role": "operator"
+  },
+  {
+    "id": "notif_log_1794305235063_l62w",
+    "action": "device_registered",
+    "timestamp": "2026-11-10T10:07:15.063Z",
+    "deviceId": "test1",
+    "userId": "test_u",
+    "platform": "Android Mobile",
+    "role": "operator"
+  }
+]

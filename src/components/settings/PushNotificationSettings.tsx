@@ -26,6 +26,8 @@ import {
 } from '../../types/notifications';
 import { notificationService } from '../../services/notificationService';
 import { storageService } from '../../services/storage';
+import { db } from '../../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface PushNotificationSettingsProps {
   currentUser: UserAccount;
@@ -66,21 +68,48 @@ export const PushNotificationSettings: React.FC<PushNotificationSettingsProps> =
 
   const currentDeviceId = storageService.getDeviceId();
 
-  // Load registered devices for this user
+  // Load registered devices for this user with dual-source fallback
   const loadDevices = async () => {
     if (!currentUser?.id) return;
     setIsLoadingDevices(true);
+    let loaded: any[] = [];
     try {
       const res = await fetch(`/api/notifications/devices?userId=${encodeURIComponent(currentUser.id)}`);
-      const data = await res.json();
-      if (data.success) {
-        setActiveDevices(data.devices || []);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
+          const data = JSON.parse(text);
+          if (data.success && Array.isArray(data.devices) && data.devices.length > 0) {
+            loaded = data.devices;
+          }
+        }
       }
     } catch (e) {
-      console.warn('Failed loading notification devices:', e);
-    } finally {
-      setIsLoadingDevices(false);
+      console.warn('Failed loading notification devices from server:', e);
     }
+
+    // Direct Firestore fallback / sync
+    if (loaded.length === 0) {
+      try {
+        const q = query(
+          collection(db, 'notification_devices'),
+          where('user_id', '==', currentUser.id)
+        );
+        const snap = await getDocs(q);
+        const fsDevices: any[] = [];
+        snap.forEach(docSnap => {
+          fsDevices.push(docSnap.data());
+        });
+        if (fsDevices.length > 0) {
+          loaded = fsDevices;
+        }
+      } catch (fsErr) {
+        console.warn('Failed loading notification devices from Firestore:', fsErr);
+      }
+    }
+
+    setActiveDevices(loaded);
+    setIsLoadingDevices(false);
   };
 
   useEffect(() => {

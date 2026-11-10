@@ -127,6 +127,29 @@ service cloud.firestore {
       }
     }
 
+    // 5. Notification Devices (Multi-Device FCM Push Registration)
+    match /notification_devices/{deviceId} {
+      allow read: if isSignedIn() && (
+        resource == null || resource.data.user_id == request.auth.uid
+      );
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.user_id == request.auth.uid ||
+        request.resource.data.user_id == request.auth.uid
+      );
+      allow delete: if isSignedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    // 6. Push Notifications Record
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (
+        resource == null || resource.data.recipient_user_id == request.auth.uid
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource.data.recipient_user_id == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.recipient_user_id == request.auth.uid;
+    }
+
     // Default Deny
     match /{document=**} {
       allow read, write: if false;

@@ -1,0 +1,1388 @@
+You are an expert Firebase architect, Android notification engineer, backend engineer, security engineer, database architect and QA engineer.
+
+I already have an SEF Multi-School Management application built in Google AI Studio.
+
+DO NOT redesign or break the existing application.
+
+ADD a complete, production-grade PUSH NOTIFICATION SYSTEM to the existing application.
+
+The application has two primary account roles:
+
+1. OPERATOR
+2. HEAD TEACHER
+
+The application hierarchy is:
+
+OPERATOR
+↓
+MULTIPLE SCHOOLS
+↓
+HEAD TEACHER
+↓
+SCHOOL DATA
+
+One Operator can manage more than 5 schools, potentially 10, 20 or more.
+
+Each Head Teacher belongs to and is authorized for a specific school.
+
+The notification system must respect this hierarchy at all times.
+
+==================================================
+
+1. PRIMARY OBJECTIVE
+   ==================================================
+
+Implement real push notifications similar to professional apps such as Facebook, X and other modern Android applications.
+
+Notifications must:
+
+- arrive when the app is open
+- arrive when the app is in the background
+- arrive when the app is not currently open
+- appear in the Android notification panel
+- support notification sound
+- support notification badge where supported
+- open the correct screen when tapped
+- work across multiple devices for the same account
+- remain associated with the authenticated account
+- never send private school information to an unauthorized account
+
+Use Firebase Cloud Messaging (FCM) as the push notification infrastructure.
+
+Do not build a fake/local-only notification system.
+
+FCM must be connected to a trusted server-side environment for sending notifications. Never put Firebase Admin credentials or other server secrets inside the Android/client application. Firebase documents the server/trusted-environment architecture for FCM.
+
+==================================================
+2. CRITICAL PERMISSION FLOW
+
+Create an in-app setting:
+
+"Enable Notifications"
+
+When the user taps it:
+
+STEP 1
+Check the current Android notification permission state.
+
+STEP 2
+If permission is already granted:
+
+- register/refresh the device messaging registration
+- save/update the device registration securely
+- enable notification status in the account
+- show:
+  "Notifications are enabled"
+
+STEP 3
+If permission has not yet been granted:
+
+Trigger the REAL Android system notification permission request.
+
+Do NOT create a fake permission dialog pretending to be the Android system dialog.
+
+For Android 13/API 33 and newer, request:
+
+android.permission.POST_NOTIFICATIONS
+
+Only after the user grants the OS permission should the application register the device for push notifications.
+
+STEP 4
+If the user denies permission:
+
+Do NOT repeatedly force the permission dialog.
+
+Show:
+
+"Notifications are currently disabled. You can enable them from Android Settings."
+
+Provide:
+
+[Open Notification Settings]
+
+The app must gracefully continue working without push notifications.
+
+STEP 5
+If Android indicates that permission has been permanently denied or the system will not show the permission dialog again:
+
+Do not keep requesting it in a loop.
+
+Open the application's Android notification settings page when the user chooses:
+
+"Enable from Settings"
+
+==================================================
+3. DO NOT ASK PERMISSION AT APP STARTUP
+
+Do NOT immediately request notification permission when the user opens the app for the first time.
+
+The user must explicitly tap:
+
+"Enable Notifications"
+
+before the permission request is triggered.
+
+The system permission request must therefore happen as a direct consequence of the user's action.
+
+==================================================
+4. ACCOUNT-BASED NOTIFICATION ARCHITECTURE
+
+Notifications must belong to the authenticated USER ACCOUNT, not to a particular phone.
+
+Use:
+
+user_id
+
+as the primary identity.
+
+A user may log in on:
+
+Phone A
+Phone B
+Tablet
+Other supported device
+
+Each physical device must have its own notification registration.
+
+Never store only one notification token per user.
+
+Use a separate device-registration collection/table.
+
+Suggested structure:
+
+notification_devices
+
+Fields:
+
+device_id
+user_id
+role
+school_ids
+platform
+app_version
+device_name
+device_model
+os_version
+messaging_token / installation identifier
+permission_status
+notifications_enabled
+last_seen_at
+created_at
+updated_at
+last_token_refresh_at
+is_active
+
+Each device must have a unique device registration.
+
+==================================================
+5. MULTI-DEVICE SUPPORT
+
+If the same Operator logs in on two phones:
+
+Phone A
+Phone B
+
+both devices should receive notifications intended for that Operator.
+
+If the Operator logs out from Phone A:
+
+Phone A must stop receiving notifications for that authenticated account.
+
+Phone B must continue receiving them.
+
+If the user logs into another account on Phone A:
+
+Phone A must no longer receive notifications intended for the previous account.
+
+This is critical.
+
+Never identify notification recipients only by device token.
+
+The authenticated account relationship must always be verified server-side.
+
+==================================================
+6. OPERATOR NOTIFICATION ROUTING
+
+An Operator may manage:
+
+School A
+School B
+School C
+School D
+School E
+etc.
+
+The Operator should receive:
+
+- notifications concerning all authorized schools
+- school-specific alerts
+- operator-level system notifications
+- tasks
+- reports
+- issues
+- attendance alerts
+- monitoring alerts
+- result alerts
+- Head Teacher messages
+
+Example:
+
+School B has attendance below the configured threshold.
+
+Send to the Operator:
+
+"Low Attendance — School B"
+
+The notification payload must identify:
+
+notification_id
+recipient_user_id
+school_id
+notification_type
+target_screen
+target_record_id
+
+When the Operator taps it:
+
+Open:
+
+School B → Attendance → relevant date/report
+
+Do not simply open the app home screen.
+
+==================================================
+7. HEAD TEACHER NOTIFICATION ROUTING
+
+Each Head Teacher must be associated with a specific authorized school.
+
+Example:
+
+Head Teacher A → School A
+Head Teacher B → School B
+Head Teacher C → School C
+
+If the Operator creates a task for Head Teacher B:
+
+ONLY Head Teacher B should receive the notification.
+
+Do not send it to Head Teacher A or C.
+
+Example:
+
+Operator creates:
+
+"Submit monthly attendance report"
+
+School:
+School B
+
+Assigned to:
+Head Teacher B
+
+Notification:
+
+"New Task — Monthly Attendance Report"
+
+When Head Teacher B taps it:
+
+Open:
+
+Tasks → Monthly Attendance Report
+
+==================================================
+8. STRICT SCHOOL AUTHORIZATION
+
+This is a security-critical requirement.
+
+Never trust:
+
+school_id
+user_id
+role
+recipient_id
+
+provided by the mobile client.
+
+The backend must verify authorization server-side.
+
+Rules:
+
+OPERATOR:
+
+Can receive notifications for schools assigned to that Operator.
+
+HEAD TEACHER:
+
+Can receive notifications only for the school(s) explicitly assigned to that Head Teacher.
+
+A Head Teacher must NEVER be able to receive or access another school's notification simply by modifying a client-side ID.
+
+All notification creation and delivery authorization must be performed server-side.
+
+==================================================
+9. NOTIFICATION TYPES
+
+Create a centralized notification type system.
+
+Categories:
+
+ATTENDANCE
+TEACHER_ATTENDANCE
+STUDENT_ATTENDANCE
+TASK
+ISSUE
+VISIT
+MONITORING
+RESULT
+MESSAGE
+SYSTEM
+SYNC
+SECURITY
+ACCOUNT
+
+Example notification types:
+
+LOW_STUDENT_ATTENDANCE
+LOW_TEACHER_ATTENDANCE
+TEACHER_ABSENT
+NEW_TASK
+TASK_DUE
+TASK_OVERDUE
+ISSUE_CREATED
+ISSUE_OVERDUE
+VISIT_REMINDER
+MONITORING_REQUIRED
+RESULT_AVAILABLE
+NEW_OPERATOR_MESSAGE
+NEW_HEAD_TEACHER_MESSAGE
+ACCOUNT_LOGIN
+ACCOUNT_SECURITY_ALERT
+SYNC_ERROR
+
+Do not hard-code notification behavior throughout the application.
+
+Use one centralized notification service.
+
+==================================================
+10. NOTIFICATION DATABASE
+
+Create a server-side notification record.
+
+Suggested:
+
+notifications
+
+Fields:
+
+notification_id
+recipient_user_id
+recipient_role
+school_id
+type
+title
+body
+target_screen
+target_record_id
+payload
+created_at
+sent_at
+delivered_at if available
+read_at
+opened_at
+status
+priority
+deduplication_key
+expires_at
+
+Never rely only on the Android notification tray as the notification database.
+
+The application must maintain its own notification history.
+
+==================================================
+11. IN-APP NOTIFICATION CENTER
+
+Create a professional notification center similar to modern apps.
+
+Add a notification bell icon.
+
+Display:
+
+Unread count
+
+Example:
+
+🔔 5
+
+Opening it shows:
+
+All
+Unread
+Attendance
+Tasks
+Issues
+Visits
+Results
+System
+
+Each notification should show:
+
+Icon
+Title
+Short message
+School
+Time
+Read/unread state
+
+Example:
+
+🔴 Low Attendance
+
+Dua Public School
+
+Student attendance dropped below 80%.
+
+10 min ago
+
+Tapping the notification should open the appropriate record.
+
+==================================================
+12. READ / UNREAD SYSTEM
+
+Notifications must support:
+
+Unread
+Read
+
+When the user opens a notification:
+
+Set read_at.
+
+Do not mark a notification as read merely because it was delivered.
+
+Opening the notification should mark it as read.
+
+Support:
+
+Mark as read
+Mark all as read
+
+Unread count must remain synchronized across devices.
+
+If the user reads a notification on Phone A, Phone B should eventually reflect that notification as read.
+
+==================================================
+13. DEEP LINKING
+
+Every actionable notification must have a destination.
+
+Example:
+
+notification:
+
+"3 teachers absent today — School A"
+
+target:
+
+school/123/teacher-attendance/2026-11-10
+
+When tapped:
+
+Open the exact relevant screen.
+
+Do not depend only on notification title/body to determine the destination.
+
+Use structured fields such as:
+
+target_type
+target_id
+school_id
+
+Validate authorization again when opening the destination.
+
+If the target record no longer exists:
+
+Open a safe fallback screen and show:
+
+"This item is no longer available."
+
+Never crash.
+
+==================================================
+14. FOREGROUND NOTIFICATIONS
+
+When the application is currently open:
+
+Do not silently ignore FCM messages.
+
+Display an appropriate in-app notification/banner or system notification according to the configured UX.
+
+Avoid creating duplicate notifications.
+
+A notification received while foregrounded must still be stored in the in-app notification center.
+
+==================================================
+15. BACKGROUND NOTIFICATIONS
+
+When the app is in the background:
+
+Use FCM so the notification appears in the Android system notification tray.
+
+The notification must contain enough information to display immediately.
+
+Do not depend on making a network request after receiving the notification before showing it.
+
+Firebase specifically recommends handling/displaying user-visible notifications promptly because background processing time is limited.
+
+==================================================
+16. APP CLOSED / NOT CURRENTLY OPEN
+
+When the app is not currently open:
+
+Notifications must still be delivered through FCM where the platform/device permits.
+
+When the user taps the notification:
+
+Launch the application.
+
+Restore the authenticated session if valid.
+
+Then navigate to the notification's target screen.
+
+If the session has expired:
+
+Open login.
+
+After successful login:
+
+Continue to the requested notification destination only if the authenticated user is authorized.
+
+Never expose notification data before authorization.
+
+==================================================
+17. TOKEN / DEVICE REGISTRATION MANAGEMENT
+
+Implement robust messaging registration.
+
+Handle:
+
+Initial registration
+Token refresh
+App reinstall
+App update
+Account login
+Account logout
+Multiple accounts
+Multiple devices
+Permission changes
+Invalid/expired registrations
+
+Never assume a token remains permanent.
+
+Whenever the messaging registration changes:
+
+Update the backend.
+
+Remove or deactivate stale registrations.
+
+Do not create duplicate device records.
+
+Use a stable device/install identifier where appropriate and maintain the current messaging registration.
+
+==================================================
+18. LOGOUT BEHAVIOR
+
+When a user logs out:
+
+1. Mark the device registration inactive for that user.
+2. Remove the association between device and previous user.
+3. Do not delete another user's device registration.
+4. Do not delete the entire notification history unnecessarily.
+5. If another account logs in, register the device for the new account.
+
+Logout must be safe even if the network is temporarily unavailable.
+
+Queue the server update and retry when connectivity returns.
+
+==================================================
+19. DUPLICATE NOTIFICATION PROTECTION
+
+Prevent duplicate notifications caused by:
+
+- retry
+- network reconnection
+- app restart
+- token refresh
+- repeated backend events
+- multiple devices
+- repeated API requests
+
+Every notification event must have a unique:
+
+event_id
+
+and/or:
+
+deduplication_key
+
+The backend must make notification creation idempotent.
+
+If the same event is processed twice:
+
+Only one logical notification record should be created for that recipient/event combination.
+
+==================================================
+20. RETRY SYSTEM
+
+If sending a notification temporarily fails:
+
+Do not silently lose it.
+
+Use controlled retry logic.
+
+Track:
+
+pending
+processing
+sent
+failed
+retrying
+
+Use exponential backoff where appropriate.
+
+Do not create infinite retry loops.
+
+After a defined retry limit:
+
+mark the delivery attempt as failed and log the reason.
+
+The main application data must never be blocked because notification delivery failed.
+
+==================================================
+21. OFFLINE-FIRST BEHAVIOR
+
+The application already supports offline-oriented school management.
+
+Notification functionality must respect this.
+
+If the operator creates an action while offline that should generate a notification:
+
+Store the notification event locally.
+
+When connectivity returns:
+
+Synchronize the underlying data first.
+
+Then create/send the appropriate notification.
+
+Never send a notification referring to data that has not successfully synchronized to the server.
+
+==================================================
+22. SECURITY
+
+Never put:
+
+Firebase Admin SDK private keys
+service-account private keys
+server secrets
+FCM server credentials
+
+inside the Android/client application.
+
+Client code may contain only public Firebase configuration required by the client SDK.
+
+All privileged notification sending must occur in a trusted backend/server environment.
+
+Never allow the client to call an endpoint such as:
+
+sendNotification(toUserId)
+
+without server-side authorization.
+
+Instead the backend should determine the valid recipients based on:
+
+authenticated user
+role
+school relationship
+event
+permissions
+
+==================================================
+23. NOTIFICATION CHANNELS
+
+Create proper Android notification channels.
+
+Suggested channels:
+
+General
+Attendance
+Tasks
+Issues
+Visits
+Results
+Messages
+Security
+
+Each channel must have:
+
+channel ID
+name
+description
+appropriate importance
+
+Create channels before notifications attempt to use them.
+
+Do not reference a notification channel ID that has not been created.
+
+Firebase requires the Android notification channel to exist when a channel ID is specified.
+
+==================================================
+24. NOTIFICATION PRIORITY
+
+Do not mark every notification as high priority.
+
+Use appropriate urgency.
+
+High priority only for notifications where timely user-visible delivery is genuinely important.
+
+Examples:
+
+Security alert
+Critical school issue
+Urgent operator message
+
+Normal priority:
+
+Routine reports
+Daily summaries
+Non-urgent tasks
+
+Follow Firebase's current FCM delivery recommendations rather than using high priority for everything.
+
+==================================================
+25. USER NOTIFICATION SETTINGS
+
+Create:
+
+Settings → Notifications
+
+Allow users to control categories.
+
+Operator:
+
+Attendance Alerts
+Teacher Alerts
+School Issues
+Tasks
+Visits
+Results
+Messages
+System Alerts
+
+Head Teacher:
+
+Student Attendance
+Teacher Attendance
+Tasks
+Operator Messages
+School Issues
+Results
+System Alerts
+
+Include:
+
+Enable All
+Disable All
+Individual category toggles
+
+But remember:
+
+The app cannot override Android's OS-level notification permission.
+
+If Android notifications are disabled at OS level, show:
+
+"Notifications are disabled in Android Settings."
+
+with:
+
+[Open Settings]
+
+==================================================
+26. NOTIFICATION ENABLE STATUS
+
+The notification settings page must clearly show:
+
+Enabled
+Disabled
+Permission Required
+Blocked by Android
+Not Registered
+Syncing
+Registration Error
+
+Do not simply display:
+
+"Enabled"
+
+unless:
+
+1. OS permission is granted
+2. device registration exists
+3. account association is valid
+4. registration is active
+
+==================================================
+27. ACCOUNT LOGIN NOTIFICATION
+
+Optional security notification:
+
+"New login detected"
+
+Include:
+
+Device
+Date/time
+
+Do not include unnecessary sensitive device information.
+
+Allow the user to review active devices.
+
+==================================================
+28. OPERATOR → HEAD TEACHER NOTIFICATION
+
+Create an internal communication mechanism.
+
+Operator can select:
+
+School
+Head Teacher
+Notification type
+Title
+Message
+Optional target record
+
+Then:
+
+Send Notification
+
+Before sending:
+
+Backend verifies:
+
+Operator owns/manages that school.
+
+Head Teacher belongs to that school.
+
+Head Teacher account is active.
+
+Only then send.
+
+==================================================
+29. AUTOMATIC OPERATOR ALERTS
+
+Create server-side event triggers.
+
+Examples:
+
+Student attendance below threshold.
+
+Teacher attendance below threshold.
+
+School has overdue task.
+
+Monitoring issue becomes overdue.
+
+School visit is due.
+
+Result report is available.
+
+Important school record has changed.
+
+Each event must determine the correct recipient automatically.
+
+Example:
+
+School A attendance drops below 80%.
+
+Recipients:
+
+Operator responsible for School A.
+
+Head Teacher of School A only if the notification rule says so.
+
+Never notify unrelated schools.
+
+==================================================
+30. NOTIFICATION TEMPLATES
+
+Centralize templates.
+
+Example:
+
+LOW_ATTENDANCE:
+
+Title:
+"Low Student Attendance"
+
+Body:
+"{school_name}: Student attendance is {attendance_percentage}% today."
+
+TASK_ASSIGNED:
+
+Title:
+"New Task"
+
+Body:
+"{school_name}: You have been assigned a new task — {task_title}"
+
+ISSUE_OVERDUE:
+
+Title:
+"Overdue Issue"
+
+Body:
+"{school_name}: Issue '{issue_title}' is overdue."
+
+Do not construct notification text randomly in multiple components.
+
+==================================================
+31. TIME AND DATE
+
+Store timestamps in a consistent server format.
+
+Display them according to the user's local timezone.
+
+Do not calculate important notification timing only from the device clock.
+
+For scheduled notifications/reminders, use server-side scheduling where appropriate.
+
+==================================================
+32. NOTIFICATION HISTORY
+
+Keep historical notifications.
+
+Do not delete important notifications simply because they disappeared from the Android notification tray.
+
+Allow:
+
+Read
+Unread
+Filter
+Search
+
+Optionally allow:
+
+Delete notification from personal history
+
+but deletion must not affect the underlying school record.
+
+==================================================
+33. DELIVERY OBSERVABILITY
+
+Create an internal notification diagnostics system.
+
+For every notification event record:
+
+Created
+Recipient determined
+Authorization passed
+Delivery requested
+Delivery result
+Opened if available
+Read
+Failure reason
+
+Do not expose sensitive backend diagnostics to ordinary users.
+
+Provide an admin/developer diagnostic screen only when appropriate.
+
+==================================================
+34. ERROR HANDLING
+
+No notification-related error may crash the application.
+
+Handle:
+
+No internet
+FCM unavailable
+Permission denied
+Invalid token
+Expired token
+Invalid recipient
+Unauthorized school
+Missing target record
+Expired session
+Server timeout
+Backend error
+Duplicate event
+Invalid notification payload
+
+Show user-friendly messages.
+
+Log technical details securely for debugging.
+
+==================================================
+35. IMPORTANT: NO BLIND NOTIFICATION SENDING
+
+Never send a notification simply because a notification button was clicked.
+
+Every notification must pass:
+
+Authentication
+Authorization
+Recipient validation
+School validation
+Notification type validation
+Payload validation
+Deduplication check
+
+Then send.
+
+==================================================
+36. NOTIFICATION PAYLOAD
+
+Use a structured payload.
+
+Example conceptual structure:
+
+notification_id
+event_id
+recipient_user_id
+recipient_role
+school_id
+type
+title
+body
+target_type
+target_id
+created_at
+
+Do not put large amounts of sensitive school/student data into the push payload.
+
+The push payload should contain enough information to display the notification and identify the destination.
+
+Fetch additional authorized data after the app opens.
+
+==================================================
+37. DO NOT BREAK EXISTING APP DATA
+
+This is an existing application.
+
+Do NOT:
+
+- recreate the database unnecessarily
+- delete existing users
+- delete schools
+- delete students
+- delete teachers
+- change school relationships
+- change Operator permissions
+- change Head Teacher permissions
+- break login
+- break synchronization
+- break offline functionality
+
+Make the notification system modular and integrate it with the existing architecture.
+
+==================================================
+38. REQUIRED DATABASE RELATIONSHIPS
+
+Maintain:
+
+Operator
+→ many Schools
+
+School
+→ one/more authorized Head Teachers according to existing app rules
+
+User
+→ many Device Registrations
+
+User
+→ many Notifications
+
+School
+→ many Notifications
+
+Notification
+→ optional target record
+
+Never use school name as the primary relationship key.
+
+Use stable IDs.
+
+==================================================
+39. TESTING REQUIREMENTS
+
+Before declaring the notification system complete, perform automated and manual tests.
+
+TEST 1:
+
+Operator enables notifications.
+
+Expected:
+
+Android permission prompt appears.
+
+TEST 2:
+
+Operator taps Allow.
+
+Expected:
+
+Notification status becomes Enabled.
+
+TEST 3:
+
+Operator taps Don't Allow.
+
+Expected:
+
+No crash.
+Status becomes Disabled/Permission Required.
+
+TEST 4:
+
+User opens Android Settings and disables notifications.
+
+Expected:
+
+App detects disabled state.
+
+TEST 5:
+
+User re-enables notifications in Android Settings.
+
+Expected:
+
+App detects permission again.
+
+TEST 6:
+
+Operator has 6 schools.
+
+Expected:
+
+Operator receives notifications only for those 6 schools.
+
+TEST 7:
+
+Head Teacher belongs to School A.
+
+Expected:
+
+Head Teacher receives School A notifications.
+
+TEST 8:
+
+Attempt to send School B notification to School A Head Teacher.
+
+Expected:
+
+Backend rejects the request.
+
+TEST 9:
+
+Operator logs into two phones.
+
+Expected:
+
+Both devices receive Operator notifications.
+
+TEST 10:
+
+Operator logs out from Phone A.
+
+Expected:
+
+Phone A stops receiving Operator notifications.
+
+Phone B continues receiving them.
+
+TEST 11:
+
+Phone A logs into another account.
+
+Expected:
+
+Previous user's notifications are not delivered to the new account.
+
+TEST 12:
+
+Send notification while app is open.
+
+Expected:
+
+Correct foreground handling.
+
+TEST 13:
+
+Send while app is backgrounded.
+
+Expected:
+
+Android system notification appears.
+
+TEST 14:
+
+Send while app is not currently open.
+
+Expected:
+
+Notification appears when FCM/device conditions permit.
+
+TEST 15:
+
+Tap notification.
+
+Expected:
+
+Correct deep-linked screen opens.
+
+TEST 16:
+
+Target record has been deleted.
+
+Expected:
+
+No crash.
+
+Safe fallback message.
+
+TEST 17:
+
+Same event is processed twice.
+
+Expected:
+
+No duplicate logical notification.
+
+TEST 18:
+
+Internet disappears during registration.
+
+Expected:
+
+No crash.
+Registration retries safely.
+
+TEST 19:
+
+FCM token changes.
+
+Expected:
+
+Backend registration updates correctly.
+
+TEST 20:
+
+App is reinstalled.
+
+Expected:
+
+New device registration is created and old stale registration is eventually cleaned up.
+
+TEST 21:
+
+Operator reads notification on Phone A.
+
+Expected:
+
+Read state synchronizes to Phone B.
+
+TEST 22:
+
+Head Teacher attempts to access another school's notification using a manipulated ID.
+
+Expected:
+
+Backend rejects access.
+
+TEST 23:
+
+Large notification volume.
+
+Expected:
+
+No notification-processing loop, database corruption or UI freeze.
+
+TEST 24:
+
+Old notification target.
+
+Expected:
+
+Safe handling without crash.
+
+TEST 25:
+
+Update application to a newer version.
+
+Expected:
+
+Existing account and notification registration continue correctly.
+
+==================================================
+40. FINAL IMPLEMENTATION RULE
+
+Do not tell me that the notification system is complete merely because the UI button exists.
+
+The following must all be genuinely connected:
+
+Android permission
+↓
+Firebase Messaging
+↓
+Device registration
+↓
+Authenticated account
+↓
+Backend recipient authorization
+↓
+Notification creation
+↓
+FCM delivery
+↓
+Android notification
+↓
+Notification tap
+↓
+Authentication
+↓
+Authorization
+↓
+Deep-linked destination
+↓
+Read/open state
+
+If any link in this chain is missing, the implementation is incomplete.
+
+==================================================
+41. DEVELOPMENT APPROACH
+
+First inspect the EXISTING application's:
+
+- authentication
+- user accounts
+- Operator/Head Teacher roles
+- school relationships
+- database
+- synchronization system
+- navigation
+- backend/server functions
+- existing notification/in-app notification components
+
+Do not create duplicate systems.
+
+Then implement the notification architecture using the existing account and school relationships.
+
+Use Firebase Cloud Messaging and current Firebase APIs/documentation.
+
+Use current Android notification permission behavior.
+
+Keep all server credentials secure.
+
+After implementation, run the complete notification test matrix above.
+
+Fix discovered issues before declaring completion.
+
+The final result must behave like a professional production notification system, while preserving the existing SEF Multi-School Operator and Head Teacher architecture.

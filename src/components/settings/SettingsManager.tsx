@@ -28,8 +28,11 @@ import {
   History,
   CheckCircle,
   FileSpreadsheet,
-  Edit2
+  Edit2,
+  Bell,
 } from 'lucide-react';
+import { PushNotificationSettings } from './PushNotificationSettings';
+import { SendNotificationModal } from '../notifications/SendNotificationModal';
 
 export const SettingsManager: React.FC = () => {
   const {
@@ -53,8 +56,9 @@ export const SettingsManager: React.FC = () => {
     staff,
   } = useApp();
 
-  type SettingsTab = 'account_security' | 'sync_backup' | 'policy_thresholds';
+  type SettingsTab = 'account_security' | 'notifications' | 'sync_backup' | 'policy_thresholds';
   const [activeTab, setActiveTab] = useState<SettingsTab>('account_security');
+  const [isSendNotifModalOpen, setIsSendNotifModalOpen] = useState(false);
 
   // Policy thresholds
   const [criticalThreshold, setCriticalThreshold] = useState(settings.attendanceThresholds.criticalBelow);
@@ -277,6 +281,19 @@ export const SettingsManager: React.FC = () => {
           >
             <Shield className="w-4 h-4" />
             Account & Security
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('notifications')}
+            className={`px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 transition cursor-pointer text-xs ${
+              activeTab === 'notifications'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Bell className="w-4 h-4" />
+            Push Notifications
           </button>
 
           <button
@@ -667,6 +684,15 @@ export const SettingsManager: React.FC = () => {
         </div>
       )}
 
+      {/* TAB: PUSH NOTIFICATIONS */}
+      {activeTab === 'notifications' && currentUser && (
+        <PushNotificationSettings
+          currentUser={currentUser}
+          schools={schools}
+          onOpenSendModal={() => setIsSendNotifModalOpen(true)}
+        />
+      )}
+
       {/* TAB 2: CLOUD SYNCHRONIZATION & DATA BACKUP */}
       {activeTab === 'sync_backup' && (
         <div className="space-y-4">
@@ -943,6 +969,17 @@ export const SettingsManager: React.FC = () => {
             </button>
           </div>
         </form>
+      )}
+
+      {/* Send Push Notification Modal */}
+      {isSendNotifModalOpen && currentUser && (
+        <SendNotificationModal
+          isOpen={isSendNotifModalOpen}
+          onClose={() => setIsSendNotifModalOpen(false)}
+          currentUser={currentUser}
+          schools={schools}
+          onSuccess={() => {}}
+        />
       )}
     </div>
   );

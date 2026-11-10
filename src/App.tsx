@@ -29,6 +29,7 @@ import { PullToRefresh } from './components/common/PullToRefresh';
 
 import { OperatorProfileSetup } from './components/auth/OperatorProfileSetup';
 import { HeadTeacherProfileSetup } from './components/auth/HeadTeacherProfileSetup';
+import { ForegroundNotificationBanner } from './components/notifications/ForegroundNotificationBanner';
 
 const AppContent: React.FC = () => {
   const {
@@ -43,12 +44,92 @@ const AppContent: React.FC = () => {
     completeHeadTeacherSetup,
     logout,
     currentTab,
+    setCurrentTab,
+    setActiveSchoolId,
+    schools,
+    tasks,
+    issues,
     isAIAssistantOpen,
     setIsAIAssistantOpen,
     isEditProfileOpen,
     closeEditProfile,
     editingTargetUser,
   } = useApp();
+
+  const [deepLinkNotice, setDeepLinkNotice] = React.useState<string | null>(null);
+
+  // Handle deep-linking from Android push notification tray clicks and foreground links
+  React.useEffect(() => {
+    if (!currentUser) return;
+
+    const handleNavigate = (screen: string, schoolId?: string, recordId?: string) => {
+      if (!screen) return;
+
+      // Strict role verification: Head Teacher can only view their own school
+      if (currentUser.role === 'headTeacher' || currentUser.role === 'head_teacher') {
+        if (schoolId && currentUser.schoolId && schoolId !== currentUser.schoolId) {
+          setDeepLinkNotice('Unauthorized: You can only access records for your assigned school.');
+          setTimeout(() => setDeepLinkNotice(null), 4000);
+          return;
+        }
+      }
+
+      // Check school existence
+      if (schoolId && schoolId !== 'all') {
+        const schoolExists = schools.some(s => s.id === schoolId);
+        if (schoolExists) {
+          setActiveSchoolId(schoolId);
+        } else {
+          setDeepLinkNotice('This school record is no longer available.');
+          setTimeout(() => setDeepLinkNotice(null), 4000);
+          return;
+        }
+      }
+
+      // Safe fallback if target record was deleted (Requirement 13 & 16 & 24)
+      if (recordId) {
+        if (screen === 'tasks') {
+          const taskExists = tasks.some(t => t.id === recordId);
+          if (!taskExists) {
+            setDeepLinkNotice('This task is no longer available.');
+            setTimeout(() => setDeepLinkNotice(null), 4000);
+          }
+        } else if (screen === 'issues') {
+          const issueExists = issues.some(i => i.id === recordId);
+          if (!issueExists) {
+            setDeepLinkNotice('This issue is no longer available.');
+            setTimeout(() => setDeepLinkNotice(null), 4000);
+          }
+        }
+      }
+
+      setCurrentTab(screen);
+    };
+
+    // Check if launched with URL parameters from Android system notification tray click
+    if (typeof window !== 'undefined' && window.location.search) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const screenParam = urlParams.get('screen');
+      const schoolIdParam = urlParams.get('school_id');
+      const recordIdParam = urlParams.get('record_id');
+
+      if (screenParam) {
+        handleNavigate(screenParam, schoolIdParam || undefined, recordIdParam || undefined);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+
+    // Listen to deep link event from Service Worker
+    const handleDeepLinkEvent = (e: any) => {
+      const data = e.detail;
+      if (data && data.target_screen) {
+        handleNavigate(data.target_screen, data.school_id, data.target_record_id);
+      }
+    };
+
+    window.addEventListener('sef:deep_link', handleDeepLinkEvent);
+    return () => window.removeEventListener('sef:deep_link', handleDeepLinkEvent);
+  }, [currentUser, schools, tasks, issues]);
 
   // Error screen when Firestore read or verification fails (never default to operator silently)
   if (authStatus === 'auth_error') {
@@ -161,6 +242,24 @@ const AppContent: React.FC = () => {
             </p>
           </footer>
         </main>
+
+        {/* Foreground In-App Push Notification Floating Banner */}
+        <ForegroundNotificationBanner
+          onNavigate={(screen, schoolId, recordId) => {
+            setCurrentTab(screen);
+            if (schoolId && schoolId !== 'all') {
+              setActiveSchoolId(schoolId);
+            }
+          }}
+        />
+
+        {/* Safe fallback notice if target item was deleted (Requirement 13 & 16 & 24) */}
+        {deepLinkNotice && (
+          <div className="fixed bottom-24 sm:bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-slate-900 border border-amber-500/80 text-amber-300 text-xs font-semibold shadow-2xl flex items-center gap-2 animate-in fade-in duration-200">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span>{deepLinkNotice}</span>
+          </div>
+        )}
 
         <BottomNav />
         <OfflineIndicator />

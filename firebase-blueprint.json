@@ -39,6 +39,49 @@
         "settings": { "type": "object" },
         "updatedAt": { "type": "string" }
       }
+    },
+    "NotificationDevice": {
+      "title": "NotificationDevice",
+      "description": "Physical device FCM push registration tied to authenticated user",
+      "type": "object",
+      "properties": {
+        "device_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "role": { "type": "string" },
+        "school_ids": { "type": "array" },
+        "platform": { "type": "string" },
+        "app_version": { "type": "string" },
+        "device_name": { "type": "string" },
+        "device_model": { "type": "string" },
+        "os_version": { "type": "string" },
+        "messaging_token": { "type": "string" },
+        "permission_status": { "type": "string" },
+        "notifications_enabled": { "type": "boolean" },
+        "last_seen_at": { "type": "string" },
+        "is_active": { "type": "boolean" }
+      },
+      "required": ["device_id", "user_id"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Structured operational push notification record",
+      "type": "object",
+      "properties": {
+        "notification_id": { "type": "string" },
+        "event_id": { "type": "string" },
+        "recipient_user_id": { "type": "string" },
+        "recipient_role": { "type": "string" },
+        "school_id": { "type": "string" },
+        "type": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "target_screen": { "type": "string" },
+        "status": { "type": "string" },
+        "priority": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["notification_id", "recipient_user_id", "school_id", "type", "title"]
     }
   },
   "firestore": {
@@ -49,6 +92,14 @@
     "/users/{userId}/data/{dataId}": {
       "schema": { "$ref": "#/entities/UserDatabase" },
       "description": "User's synchronized schools, students, teachers, and attendance records"
+    },
+    "/notification_devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/NotificationDevice" },
+      "description": "Multi-device push notification registrations"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Persistent operational push notifications"
     }
   }
 }

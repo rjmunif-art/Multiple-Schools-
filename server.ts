@@ -7,6 +7,20 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import nodemailer from 'nodemailer';
+import {
+  getVapidPublicKey,
+  registerOrUpdateNotificationDevice,
+  deactivateNotificationDevice,
+  getActiveDevicesForUser,
+  getStoredDevices,
+  getUserNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  deleteNotificationForUser,
+  dispatchNotification,
+  getNotificationAuditLogs,
+  getStoredNotifications,
+} from './src/server/notificationsEngine';
 
 dotenv.config();
 
@@ -1614,6 +1628,289 @@ CRITICAL RULES:
       success: false,
       message: errMsg,
     });
+  }
+});
+
+// ===================== PUSH NOTIFICATIONS API =====================
+
+// 1. Get VAPID Public Key for client browser subscription
+app.get('/api/notifications/vapid-public-key', (req, res) => {
+  try {
+    const key = getVapidPublicKey();
+    res.json({ success: true, publicKey: key });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 2. Register or update device messaging token and push subscription
+app.post('/api/notifications/devices/register', (req, res) => {
+  try {
+    const {
+      device_id,
+      user_id,
+      role,
+      school_ids,
+      platform,
+      app_version,
+      device_name,
+      device_model,
+      os_version,
+      messaging_token,
+      push_subscription,
+      permission_status,
+      notifications_enabled,
+    } = req.body;
+
+    if (!device_id || !user_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'device_id and user_id are required for notification registration.',
+      });
+    }
+
+    const record = registerOrUpdateNotificationDevice({
+      device_id,
+      user_id,
+      role: role || 'operator',
+      school_ids: Array.isArray(school_ids) ? school_ids : [],
+      platform: platform || 'Android Mobile',
+      app_version: app_version || '3.5.0',
+      device_name: device_name || 'Mobile Phone',
+      device_model: device_model || 'Android Device',
+      os_version: os_version || 'Android',
+      messaging_token: messaging_token || (push_subscription ? push_subscription.endpoint : ''),
+      push_subscription,
+      permission_status: permission_status || 'granted',
+      notifications_enabled: notifications_enabled ?? true,
+    });
+
+    res.json({
+      success: true,
+      device: record,
+      message: 'Device successfully registered for push notifications!',
+    });
+  } catch (err: any) {
+    console.error('Error registering notification device:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Deactivate device on logout (Multi-Device Safety)
+app.post('/api/notifications/devices/deactivate', (req, res) => {
+  try {
+    const { device_id, user_id } = req.body;
+    if (!device_id) {
+      return res.status(400).json({ success: false, message: 'device_id is required.' });
+    }
+
+    deactivateNotificationDevice(device_id, user_id);
+    res.json({
+      success: true,
+      message: 'Device deactivated from receiving notifications for this account.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 4. List user active notification devices
+app.get('/api/notifications/devices', (req, res) => {
+  const userId = req.query.userId as string;
+  if (!userId) {
+    return res.status(400).json({ success: false, message: 'userId is required.' });
+  }
+  const devices = getActiveDevicesForUser(userId);
+  res.json({ success: true, devices });
+});
+
+// 5. Get user notifications with filtering
+app.get('/api/notifications/list', (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    const unreadOnly = req.query.unreadOnly === 'true';
+    const category = (req.query.category as string) || 'ALL';
+    const schoolId = (req.query.schoolId as string) || 'all';
+    const limit = Number(req.query.limit) || 100;
+
+    const notifs = getUserNotifications(userId, { unreadOnly, category, schoolId, limit });
+    const allUserNotifs = getUserNotifications(userId);
+    const unreadCount = allUserNotifs.filter(n => !n.read_at).length;
+
+    res.json({
+      success: true,
+      notifications: notifs,
+      unreadCount,
+      totalCount: allUserNotifs.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 6. Mark notification as read
+app.post('/api/notifications/mark-read', (req, res) => {
+  try {
+    const { userId, notificationId, markAll } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    if (markAll) {
+      const updatedCount = markAllNotificationsAsRead(userId);
+      return res.json({ success: true, updatedCount, message: 'All notifications marked as read.' });
+    }
+
+    if (!notificationId) {
+      return res.status(400).json({ success: false, message: 'notificationId is required.' });
+    }
+
+    const ok = markNotificationAsRead(notificationId, userId);
+    res.json({ success: ok, message: ok ? 'Notification marked as read.' : 'Notification not found or already read.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 7. Delete notification from user history
+app.delete('/api/notifications/:id', (req, res) => {
+  try {
+    const notificationId = req.params.id;
+    const userId = (req.query.userId || req.body.userId) as string;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    const deleted = deleteNotificationForUser(notificationId, userId);
+    res.json({ success: deleted, message: deleted ? 'Notification removed from personal history.' : 'Notification not found.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 8. Send Notification with STRICT School & Role Authorization
+app.post('/api/notifications/send', async (req, res) => {
+  try {
+    const {
+      senderUserId,
+      senderRole,
+      recipient_user_id,
+      recipient_role,
+      school_id,
+      school_name,
+      type,
+      target_screen,
+      target_record_id,
+      custom_title,
+      custom_body,
+      priority,
+      payload,
+      deduplication_key,
+    } = req.body;
+
+    if (!recipient_user_id || !school_id || !type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required parameters: recipient_user_id, school_id, and type are required.',
+      });
+    }
+
+    // STRICT ROLE & SCHOOL AUTHORIZATION:
+    // If sender is a Head Teacher, they can only send notifications for their explicitly assigned school.
+    if (senderRole === 'headTeacher' && payload?.senderAssignedSchoolId) {
+      if (payload.senderAssignedSchoolId !== school_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Security Violation: Head Teacher cannot send alerts or messages for a different school.',
+        });
+      }
+    }
+
+    // If recipient is a Head Teacher, verify they belong to this school
+    if (recipient_role === 'headTeacher' && payload?.recipientAssignedSchoolId) {
+      if (payload.recipientAssignedSchoolId !== school_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Security Violation: Cannot send notification to Head Teacher of another school.',
+        });
+      }
+    }
+
+    const result = await dispatchNotification({
+      type,
+      recipient_user_id,
+      recipient_role: recipient_role || 'operator',
+      school_id,
+      school_name: school_name || 'School',
+      target_screen,
+      target_record_id,
+      custom_title,
+      custom_body,
+      priority: priority || 'normal',
+      payload: payload || {},
+      deduplication_key,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/notifications/send:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 9. Send Test Push Notification directly to active devices
+app.post('/api/notifications/test', async (req, res) => {
+  try {
+    const { userId, schoolId, schoolName, deviceId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required for test notification.' });
+    }
+
+    const result = await dispatchNotification({
+      type: 'TEST_NOTIFICATION',
+      recipient_user_id: userId,
+      recipient_role: 'operator',
+      school_id: schoolId || 'all',
+      school_name: schoolName || 'SEF Portal',
+      target_screen: 'settings',
+      custom_title: 'SEF Push System Test',
+      custom_body: 'Congratulations! Real Android FCM push notifications are functioning perfectly on your device.',
+      priority: 'high',
+      payload: { deviceId },
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/notifications/test:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10. Diagnostics Endpoint
+app.get('/api/notifications/diagnostics', (req, res) => {
+  try {
+    const devices = getStoredDevices();
+    const activeDevices = devices.filter(d => d.is_active);
+    const notifications = getStoredNotifications();
+    const logs = getNotificationAuditLogs();
+
+    res.json({
+      success: true,
+      stats: {
+        total_registered_devices: devices.length,
+        active_push_devices: activeDevices.length,
+        total_notifications_sent: notifications.length,
+        unread_notifications_count: notifications.filter(n => !n.read_at).length,
+      },
+      recent_devices: devices.slice(0, 10),
+      recent_logs: logs.slice(0, 20),
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

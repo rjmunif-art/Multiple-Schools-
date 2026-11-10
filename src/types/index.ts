@@ -424,3 +424,5 @@ export interface AppSettings {
 }
 
 export type SyncState = 'synced' | 'syncing' | 'pending' | 'error';
+
+export * from './notifications';

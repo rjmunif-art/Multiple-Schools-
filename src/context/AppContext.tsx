@@ -28,6 +28,7 @@ import {
   getFriendlyAuthErrorMessage,
   validateFirestoreConnection,
 } from '../firebase/config';
+import { notificationService } from '../services/notificationService';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { SchoolInvite } from '../types';
 
@@ -549,9 +550,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Sign out
+  // Sign out (Multi-device safe push deactivation - Requirement 5 & 18)
   const logout = useCallback(async () => {
     try {
+      if (currentUser?.id) {
+        notificationService.deactivateCurrentDevice(currentUser.id).catch(() => {});
+      }
       await signOutUser();
       firebaseSync.cleanup();
       setCurrentUser(null);
@@ -565,7 +569,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       storageService.setCurrentUser(null);
       setAuthStatus('unauthenticated');
     }
-  }, []);
+  }, [currentUser?.id]);
 
   // Complete Operator profile setup
   const completeOperatorSetup = useCallback(async (details: {
@@ -872,7 +876,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const filtered = dbRef.current.studentAttendance.filter(a => !keys.has(`${a.schoolId}_${a.date}_${a.grade}`));
     const updated = [...newRecs, ...filtered];
     persistDatabase({ ...dbRef.current, studentAttendance: updated });
-  }, [persistDatabase]);
+
+    // Automatic Push Alert: Low Attendance (< 80%) (Requirement 29)
+    try {
+      const totalPresents = newRecs.reduce((acc, r) => acc + (r.present || 0), 0);
+      const totalEnrolled = newRecs.reduce((acc, r) => acc + (r.totalStudents || 0), 0);
+      if (totalEnrolled > 0) {
+        const pct = Math.round((totalPresents / totalEnrolled) * 100);
+        if (pct < 80) {
+          const firstRec = newRecs[0];
+          const school = dbRef.current.schools.find(s => s.id === firstRec.schoolId);
+          if (school && currentUser?.id) {
+            notificationService.sendNotification({
+              senderUserId: currentUser.id,
+              senderRole: (currentUser.role === 'head_teacher' || currentUser.role === 'headTeacher') ? 'headTeacher' : 'operator',
+              recipient_user_id: school.ownerUid || currentUser.id,
+              recipient_role: 'operator',
+              school_id: school.id,
+              school_name: school.name,
+              type: 'LOW_STUDENT_ATTENDANCE',
+              target_screen: 'attendance',
+              payload: { attendance_percentage: pct },
+              deduplication_key: `dedup_att_${school.id}_${firstRec.date}`,
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch {}
+  }, [persistDatabase, currentUser]);
 
   const saveStaffAttendance = useCallback((records: Omit<StaffDailyAttendance, 'id' | 'createdAt'>[]) => {
     const newRecs: StaffDailyAttendance[] = records.map(r => ({
@@ -884,7 +915,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const filtered = dbRef.current.staffAttendance.filter(a => !keys.has(`${a.staffId}_${a.date}`));
     const updated = [...newRecs, ...filtered];
     persistDatabase({ ...dbRef.current, staffAttendance: updated });
-  }, [persistDatabase]);
+
+    // Automatic Push Alert: Teacher Absent (Requirement 29)
+    try {
+      const absentRec = newRecs.find(r => r.status === 'Absent');
+      if (absentRec && currentUser?.id) {
+        const stf = dbRef.current.staff.find(s => s.id === absentRec.staffId);
+        const school = dbRef.current.schools.find(s => s.id === (stf?.schoolId || absentRec.schoolId));
+        if (school) {
+          notificationService.sendNotification({
+            senderUserId: currentUser.id,
+            senderRole: (currentUser.role === 'head_teacher' || currentUser.role === 'headTeacher') ? 'headTeacher' : 'operator',
+            recipient_user_id: school.ownerUid || currentUser.id,
+            recipient_role: 'operator',
+            school_id: school.id,
+            school_name: school.name,
+            type: 'TEACHER_ABSENT',
+            target_screen: 'attendance',
+            payload: { teacher_name: stf?.name || 'Staff Member' },
+            deduplication_key: `dedup_stf_abs_${school.id}_${absentRec.staffId}_${absentRec.date}`,
+          }).catch(() => {});
+        }
+      }
+    } catch {}
+  }, [persistDatabase, currentUser]);
 
   const addExamination = useCallback((examData: Omit<Examination, 'id'>) => {
     const newExam: Examination = {
@@ -1006,8 +1060,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updated = [newIssue, ...dbRef.current.issues];
     persistDatabase({ ...dbRef.current, issues: updated });
+
+    // Automatic Push Notification for new issue (Requirement 29)
+    try {
+      const school = dbRef.current.schools.find(s => s.id === issue.schoolId);
+      if (school && currentUser?.id) {
+        const recipientUid = school.ownerUid || currentUser.id;
+        notificationService.sendNotification({
+          senderUserId: currentUser.id,
+          senderRole: (currentUser.role === 'head_teacher' || currentUser.role === 'headTeacher') ? 'headTeacher' : 'operator',
+          recipient_user_id: recipientUid,
+          recipient_role: 'operator',
+          school_id: school.id,
+          school_name: school.name,
+          type: 'ISSUE_CREATED',
+          target_screen: 'issues',
+          target_record_id: newIssue.id,
+          payload: {
+            issue_title: newIssue.description?.slice(0, 45) || newIssue.category,
+            issue_id: newIssue.id,
+          },
+          deduplication_key: `dedup_iss_${newIssue.id}`,
+        }).catch(() => {});
+      }
+    } catch {}
+
     return newIssue;
-  }, [persistDatabase]);
+  }, [persistDatabase, currentUser]);
 
   const updateIssue = useCallback((issue: SchoolIssue) => {
     const updated = dbRef.current.issues.map(i => i.id === issue.id ? { ...issue, updatedAt: new Date().toISOString() } : i);
@@ -1026,8 +1105,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updated = [newTask, ...dbRef.current.tasks];
     persistDatabase({ ...dbRef.current, tasks: updated });
+
+    // Automatic Push Notification for new task (Requirement 29: Only to assigned Head Teacher)
+    try {
+      const school = dbRef.current.schools.find(s => s.id === task.schoolId);
+      if (school && currentUser?.id) {
+        const recipientUid = school.headTeacherUid || school.ownerUid || currentUser.id;
+        notificationService.sendNotification({
+          senderUserId: currentUser.id,
+          senderRole: 'operator',
+          recipient_user_id: recipientUid,
+          recipient_role: 'headTeacher',
+          school_id: school.id,
+          school_name: school.name,
+          type: 'NEW_TASK',
+          target_screen: 'tasks',
+          target_record_id: newTask.id,
+          payload: {
+            task_title: newTask.title,
+            task_id: newTask.id,
+            recipientAssignedSchoolId: school.id,
+          },
+          deduplication_key: `dedup_tsk_${newTask.id}`,
+        }).catch(() => {});
+      }
+    } catch {}
+
     return newTask;
-  }, [persistDatabase]);
+  }, [persistDatabase, currentUser]);
 
   const updateTask = useCallback((task: SchoolTask) => {
     const updated = dbRef.current.tasks.map(t => t.id === task.id ? task : t);

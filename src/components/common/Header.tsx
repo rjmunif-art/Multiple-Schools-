@@ -21,6 +21,8 @@ import {
   Menu,
   Edit2
 } from 'lucide-react';
+import { NotificationCenterModal } from '../notifications/NotificationCenterModal';
+import { notificationService } from '../../services/notificationService';
 
 export const Header: React.FC = () => {
   const {
@@ -55,8 +57,29 @@ export const Header: React.FC = () => {
   const [showYearMenu, setShowYearMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [isNotifCenterOpen, setIsNotifCenterOpen] = useState(false);
+  const [pushUnreadCount, setPushUnreadCount] = useState(0);
+
+  // Sync push notification unread count from server
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const fetchUnread = async () => {
+      try {
+        const res = await notificationService.fetchNotifications(currentUser.id, { unreadOnly: true });
+        setPushUnreadCount(res.unreadCount);
+      } catch {}
+    };
+    fetchUnread();
+
+    const handleNewPush = () => {
+      fetchUnread();
+    };
+    window.addEventListener('sef:notification', handleNewPush);
+    return () => window.removeEventListener('sef:notification', handleNewPush);
+  }, [currentUser?.id, isNotifCenterOpen]);
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
+  const totalUnreadCount = Math.max(unreadNotifs.length, pushUnreadCount);
   const isHT = currentUser?.role === 'head_teacher';
   const isSupervisor = currentUser?.role === 'supervisor';
   const isOperator = currentUser?.role === 'operator';
@@ -296,56 +319,20 @@ export const Header: React.FC = () => {
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
             </button>
 
-            {/* Notifications Bell */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifMenu(!showNotifMenu)}
-                className="relative p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white transition cursor-pointer"
-                title="Notifications"
-                aria-label="Notifications"
-              >
-                <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
-                {unreadNotifs.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                    {unreadNotifs.length}
-                  </span>
-                )}
-              </button>
-
-              {showNotifMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowNotifMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1.5 w-72 sm:w-80 rounded-2xl bg-slate-900 text-white shadow-2xl border border-slate-700 p-2.5 z-50">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                      <span className="text-xs font-bold text-white">System Alerts</span>
-                      {unreadNotifs.length > 0 && (
-                        <button
-                          onClick={markAllNotificationsRead}
-                          className="text-[10px] text-emerald-400 hover:underline cursor-pointer"
-                        >
-                          Mark all read
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/60 mt-1">
-                      {notifications.length === 0 ? (
-                        <div className="p-3 text-center text-xs text-slate-400">No notifications</div>
-                      ) : (
-                        notifications.map(n => (
-                          <div key={n.id} className={`p-2 text-xs ${n.isRead ? 'opacity-70' : 'bg-slate-800/50 rounded-lg'}`}>
-                            <div className="font-semibold text-slate-200 flex items-center justify-between">
-                              <span className="text-[11px] truncate">{n.title}</span>
-                              <span className="text-[9px] text-slate-400 shrink-0">{new Date(n.date).toLocaleDateString()}</span>
-                            </div>
-                            <p className="text-[10px] text-slate-300 mt-0.5 leading-snug">{n.message}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </>
+            {/* Notifications Bell (Opens Production Notification Center) */}
+            <button
+              onClick={() => setIsNotifCenterOpen(true)}
+              className="relative p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white transition cursor-pointer"
+              title="Open Notifications Center"
+              aria-label="Open Notifications Center"
+            >
+              <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-300" />
+              {totalUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[15px] h-3.5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center animate-pulse">
+                  {totalUnreadCount}
+                </span>
               )}
-            </div>
+            </button>
 
             {/* User Account / Role Badge */}
             <div className="relative">
@@ -517,6 +504,21 @@ export const Header: React.FC = () => {
 
       {/* Side Menu Drawer Component */}
       <SideMenuDrawer isOpen={isSideMenuOpen} onClose={() => setIsSideMenuOpen(false)} />
+
+      {/* Production In-App Notification Center Modal */}
+      {isNotifCenterOpen && currentUser && (
+        <NotificationCenterModal
+          isOpen={isNotifCenterOpen}
+          onClose={() => setIsNotifCenterOpen(false)}
+          userId={currentUser.id}
+          onNavigate={(screen, schoolId, recordId) => {
+            setCurrentTab(screen);
+            if (schoolId && schoolId !== 'all') {
+              setActiveSchoolId(schoolId);
+            }
+          }}
+        />
+      )}
     </>
   );
 };

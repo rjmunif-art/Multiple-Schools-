@@ -35,8 +35,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body,
-    icon: '/icon.svg',
-    badge: '/icon.svg',
+    icon: '/icon-192.png',
+    badge: '/badge-72.png',
     tag: data.deduplication_key || notificationId,
     renotify: true,
     data: {
@@ -74,6 +74,19 @@ self.addEventListener('push', (event) => {
   });
 
   event.waitUntil(Promise.all([showPromise, broadcastPromise]));
+});
+
+// Direct client message listener: Allows foreground pages to post directly to Android notification drawer
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, options } = event.data;
+    const finalOptions = {
+      ...options,
+      icon: options?.icon || '/icon-192.png',
+      badge: options?.badge || '/badge-72.png',
+    };
+    event.waitUntil(self.registration.showNotification(title, finalOptions));
+  }
 });
 
 // Notification Click Event (Android notification tray tap)

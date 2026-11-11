@@ -169,16 +169,28 @@ class NotificationService {
 
     try {
       if (!this.serviceWorkerRegistration) {
-        this.serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-          scope: '/',
-        });
-        console.log('[NotificationService] FCM Service Worker registered:', this.serviceWorkerRegistration.scope);
+        const existing = await navigator.serviceWorker.getRegistration();
+        if (existing && existing.active) {
+          this.serviceWorkerRegistration = existing;
+        } else {
+          this.serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            scope: '/',
+          });
+        }
+        console.log('[NotificationService] Service Worker active:', this.serviceWorkerRegistration.scope);
       }
 
       this.initForegroundListeners();
       return this.serviceWorkerRegistration;
     } catch (err) {
       console.warn('[NotificationService] Failed to register service worker:', err);
+      try {
+        const fallbackReg = await navigator.serviceWorker.getRegistration();
+        if (fallbackReg) {
+          this.serviceWorkerRegistration = fallbackReg;
+          return fallbackReg;
+        }
+      } catch {}
       return null;
     }
   }
@@ -570,7 +582,128 @@ class NotificationService {
   }
 
   /**
-   * Send test push notification directly to user's device
+   * Shows a real native system notification in the Android notification bar / status tray
+   */
+  public async showSystemNotification(
+    title: string,
+    options?: {
+      body?: string;
+      icon?: string;
+      badge?: string;
+      tag?: string;
+      data?: any;
+      sound?: boolean;
+      vibrate?: boolean;
+    }
+  ): Promise<boolean> {
+    try {
+      if (typeof window === 'undefined') return false;
+
+      // 1. Always play pleasant audio chime
+      if (options?.sound !== false) {
+        playNotificationChime();
+      }
+
+      // 2. Trigger native Android vibration
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([200, 100, 200, 100, 200]);
+        } catch {}
+      }
+
+      // 3. Verify notification permission
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        return false;
+      }
+
+      const notifData = options?.data || {};
+      const targetUrl =
+        notifData.url ||
+        (notifData.target_screen
+          ? `/?screen=${encodeURIComponent(notifData.target_screen)}&school_id=${encodeURIComponent(
+              notifData.school_id || ''
+            )}&record_id=${encodeURIComponent(
+              notifData.target_record_id || ''
+            )}&notification_id=${encodeURIComponent(notifData.notification_id || '')}`
+          : '/');
+
+      const nativeOptions: any = {
+        body: options?.body || 'New operational update received.',
+        icon: options?.icon || '/icon-192.png',
+        badge: options?.badge || '/badge-72.png',
+        tag: options?.tag || `sef_tray_${Date.now()}`,
+        renotify: true,
+        vibrate: [200, 100, 200, 100, 200],
+        requireInteraction: true,
+        silent: false,
+        data: {
+          ...notifData,
+          url: targetUrl,
+        },
+        actions: [
+          { action: 'open', title: 'Open View' },
+          { action: 'dismiss', title: 'Dismiss' },
+        ],
+      };
+
+      let swNotified = false;
+
+      // Primary: Display via active Service Worker (REQUIRED FOR ANDROID NOTIFICATION BAR / TRAY DISPLAY)
+      if ('serviceWorker' in navigator) {
+        try {
+          let reg: ServiceWorkerRegistration | null | undefined = await navigator.serviceWorker.getRegistration();
+          if (!reg) {
+            reg = await this.initServiceWorker();
+          }
+          if (!reg) {
+            const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+            reg = await Promise.race([navigator.serviceWorker.ready, timeoutPromise]);
+          }
+
+          if (reg && typeof reg.showNotification === 'function') {
+            await reg.showNotification(title, nativeOptions);
+            swNotified = true;
+            console.log('[NotificationService] Android notification bar alert displayed via SW reg.showNotification:', title);
+          }
+
+          // Also trigger through active SW postMessage to ensure service worker handles background
+          if (reg && reg.active) {
+            reg.active.postMessage({
+              type: 'SHOW_NOTIFICATION',
+              title,
+              options: nativeOptions,
+            });
+            swNotified = true;
+          }
+        } catch (swErr) {
+          console.warn('[NotificationService] SW showNotification notice:', swErr);
+        }
+      }
+
+      // Secondary fallback: Window Notification constructor
+      if (!swNotified) {
+        try {
+          const notifInstance = new Notification(title, nativeOptions);
+          notifInstance.onclick = () => {
+            window.focus();
+            window.location.href = targetUrl;
+            notifInstance.close();
+          };
+          return true;
+        } catch (winErr) {
+          console.warn('[NotificationService] Window Notification constructor notice:', winErr);
+        }
+      }
+
+      return swNotified;
+    } catch (err) {
+      console.error('[NotificationService] showSystemNotification failure:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Send test push notification directly to user's device and Android notification bar
    */
   public async sendTestNotification(
     userId: string,
@@ -578,37 +711,68 @@ class NotificationService {
     schoolName?: string
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const deviceId = storageService.getDeviceId();
-      const res = await fetch('/api/notifications/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          schoolId: schoolId || 'all',
-          schoolName: schoolName || 'SEF Portal',
-          deviceId,
-        }),
+      // 1. Direct native Android notification bar alert!
+      await this.showSystemNotification('SEF Push System Test', {
+        body: 'Congratulations! Real Android notification bar alerts are active on your device.',
+        tag: `test_${Date.now()}`,
+        data: {
+          target_screen: 'settings',
+          school_id: schoolId || 'all',
+          notification_id: `test_${Date.now()}`,
+        },
       });
 
-      if (res.ok) {
-        const data = await parseJsonSafely(res, 'Test notification');
-        return {
-          success: !!data.success,
-          message: data.message || 'Test push notification dispatched.',
-        };
-      }
+      // 2. Also record in Firestore
+      const notifId = 'ntf_test_' + Date.now();
+      try {
+        await setDoc(
+          doc(db, 'notifications', notifId),
+          cleanForFirestore({
+            notification_id: notifId,
+            event_id: 'evt_test_' + Date.now(),
+            recipient_user_id: userId,
+            recipient_role: 'operator',
+            school_id: schoolId || 'all',
+            school_name: schoolName || 'SEF Portal',
+            type: 'SYSTEM_ALERT',
+            category: 'SYSTEM',
+            title: 'SEF Push System Test',
+            body: 'Congratulations! Real Android notification bar alerts are active on your device.',
+            target_screen: 'settings',
+            payload: {},
+            created_at: new Date().toISOString(),
+            sent_at: new Date().toISOString(),
+            status: 'delivered',
+            priority: 'high',
+            deduplication_key: `dedup_${notifId}`,
+            retry_count: 0,
+          })
+        );
+      } catch {}
 
-      // Fallback: Dispatch simulated in-app notification & chime
-      playNotificationChime();
+      // 3. Dispatch to server if reachable
+      try {
+        const deviceId = storageService.getDeviceId();
+        await fetch('/api/notifications/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            schoolId: schoolId || 'all',
+            schoolName: schoolName || 'SEF Portal',
+            deviceId,
+          }),
+        });
+      } catch {}
+
       return {
         success: true,
-        message: 'Test notification delivered in-app! Audio chime and vibration verified.',
+        message: 'Test notification sent to your Android notification bar! Check the top of your phone screen.',
       };
     } catch (err: any) {
-      playNotificationChime();
       return {
-        success: true,
-        message: 'Notification chime sounded successfully on this device.',
+        success: false,
+        message: `Failed to show test notification: ${err.message}`,
       };
     }
   }

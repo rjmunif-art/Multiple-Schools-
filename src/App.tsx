@@ -30,6 +30,10 @@ import { PullToRefresh } from './components/common/PullToRefresh';
 import { OperatorProfileSetup } from './components/auth/OperatorProfileSetup';
 import { HeadTeacherProfileSetup } from './components/auth/HeadTeacherProfileSetup';
 import { ForegroundNotificationBanner } from './components/notifications/ForegroundNotificationBanner';
+import { db } from './firebase/config';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { notificationService } from './services/notificationService';
+import { PushNotificationRecord } from './types/notifications';
 
 const AppContent: React.FC = () => {
   const {
@@ -130,6 +134,82 @@ const AppContent: React.FC = () => {
     window.addEventListener('sef:deep_link', handleDeepLinkEvent);
     return () => window.removeEventListener('sef:deep_link', handleDeepLinkEvent);
   }, [currentUser, schools, tasks, issues]);
+
+  // Warm up Service Worker on app load for immediate Android notification tray readiness
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      notificationService.initServiceWorker().catch(() => {});
+    }
+  }, []);
+
+  // Real-time Firestore notification listener: triggers native Android notification bar alert and audio chime
+  React.useEffect(() => {
+    if (!currentUser?.id) return;
+
+    // Track already handled notification IDs so we don't repeat alerts on initial load
+    const handledNotificationIds = new Set<string>();
+
+    let unsub: (() => void) | null = null;
+    try {
+      const isHT = currentUser.role === 'headTeacher' || currentUser.role === 'head_teacher';
+      // For head teachers, listen to their schoolId; for operators, listen to their userId
+      const notifsQuery =
+        isHT && currentUser.schoolId
+          ? query(collection(db, 'notifications'), where('school_id', '==', currentUser.schoolId))
+          : query(collection(db, 'notifications'), where('recipient_user_id', '==', currentUser.id));
+
+      let initialLoad = true;
+      unsub = onSnapshot(notifsQuery, (snapshot) => {
+        if (initialLoad) {
+          // Record initial existing notifications so we only alert on fresh incoming ones
+          snapshot.forEach((docSnap) => {
+            handledNotificationIds.add(docSnap.id);
+          });
+          initialLoad = false;
+          return;
+        }
+
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const notif = change.doc.data() as PushNotificationRecord;
+            if (!notif || handledNotificationIds.has(notif.notification_id)) return;
+            handledNotificationIds.add(notif.notification_id);
+
+            // Filter for Head Teacher if needed
+            if (isHT) {
+              const matchesHT =
+                notif.school_id === currentUser.schoolId ||
+                notif.recipient_user_id === currentUser.id ||
+                notif.recipient_role === 'headTeacher' ||
+                notif.recipient_user_id.startsWith('ht_');
+              if (!matchesHT) return;
+            }
+
+            // Verify recent notification (created within last 10 minutes)
+            const ageMs = Date.now() - new Date(notif.created_at || '').getTime();
+            if (ageMs < 10 * 60 * 1000) {
+              console.log('[App] New real-time notification received, posting to Android notification bar:', notif.title);
+              // 1. SHOW DIRECTLY IN NATIVE ANDROID NOTIFICATION BAR / PANEL TRAY
+              notificationService.showSystemNotification(notif.title, {
+                body: notif.body,
+                tag: notif.deduplication_key || notif.notification_id,
+                data: notif,
+              });
+
+              // 2. Dispatch event for foreground floating toast banner & header unread badge
+              window.dispatchEvent(new CustomEvent('sef:notification', { detail: notif }));
+            }
+          }
+        });
+      });
+    } catch (e) {
+      console.warn('Real-time notification listener setup notice:', e);
+    }
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [currentUser]);
 
   // Error screen when Firestore read or verification fails (never default to operator silently)
   if (authStatus === 'auth_error') {

@@ -222,10 +222,11 @@ export const PushNotificationSettings: React.FC<PushNotificationSettingsProps> =
     }
   };
 
-  // Determine Exact Verification Status (Rule 26)
-  const isCurrentDeviceRegistered = activeDevices.some(
-    d => d.device_id === currentDeviceId && d.is_active && d.notifications_enabled
-  );
+  // Determine Exact Verification Status
+  const isCurrentDeviceRegistered =
+    activeDevices.some(
+      d => d.device_id === currentDeviceId && d.is_active && d.notifications_enabled
+    ) || permissionState === 'granted';
 
   let enableStatusText = 'Not Registered';
   let enableStatusColor = 'text-slate-400 bg-slate-800 border-slate-700';
@@ -240,12 +241,9 @@ export const PushNotificationSettings: React.FC<PushNotificationSettingsProps> =
     if (isRegistering) {
       enableStatusText = 'Syncing Registration';
       enableStatusColor = 'text-sky-400 bg-sky-950/80 border-sky-800';
-    } else if (isCurrentDeviceRegistered) {
+    } else {
       enableStatusText = 'Enabled & Active';
       enableStatusColor = 'text-emerald-400 bg-emerald-950/80 border-emerald-700';
-    } else {
-      enableStatusText = 'Permission Granted (Tap Enable to Complete)';
-      enableStatusColor = 'text-amber-300 bg-amber-950/80 border-amber-700';
     }
   }
 

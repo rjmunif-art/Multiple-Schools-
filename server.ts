@@ -56,6 +56,9 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ extended: true, limit: '60mb' }));
 
+// Statically serve public assets (manifest, PNG icons, service workers) with precise MIME types
+app.use(express.static(path.resolve(__dirname, 'public')));
+
 // Server-side persistent storage directory (Simulating Central SEF Cloud Database & Cloud Object Storage)
 const STORAGE_DIR = path.resolve(__dirname, 'cloud_storage');
 const UPLOADS_DIR = path.join(STORAGE_DIR, 'documents_and_photos');

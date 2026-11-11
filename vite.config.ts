@@ -11,7 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'manifest.json', 'firebase-messaging-sw.js', 'sw.js'],
+        includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png', 'badge-72.png', 'apple-touch-icon.png', 'manifest.json', 'firebase-messaging-sw.js', 'sw.js'],
         manifest: ({
           id: '/',
           name: 'SEF School Operator',
@@ -25,14 +25,20 @@ export default defineConfig(() => {
           gcm_sender_id: '103953800507',
           icons: [
             {
-              src: '/icon.svg',
-              sizes: '512x512',
-              type: 'image/svg+xml',
+              src: '/icon-192.png',
+              sizes: '192x192',
+              type: 'image/png',
               purpose: 'any',
             },
             {
+              src: '/icon-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable',
+            },
+            {
               src: '/icon.svg',
-              sizes: '192x192',
+              sizes: '512x512',
               type: 'image/svg+xml',
               purpose: 'any',
             },

@@ -1,5 +1,30 @@
 [
   {
+    "notification_id": "ntf_1794418797105_ellt41",
+    "event_id": "evt_1794418797105",
+    "recipient_user_id": "ht_200101073",
+    "recipient_role": "headTeacher",
+    "school_id": "200101073",
+    "school_name": "Dua Public School",
+    "type": "NEW_OPERATOR_MESSAGE",
+    "category": "MESSAGE",
+    "title": "Students Data update",
+    "body": "Kindly submit updated data of students",
+    "target_screen": "attendance",
+    "payload": {
+      "senderName": "Munif Ahmed",
+      "senderRole": "operator",
+      "headTeacherName": "Munif Ahmed",
+      "recipientAssignedSchoolId": "200101073"
+    },
+    "created_at": "2026-11-11T17:39:57.104Z",
+    "sent_at": "2026-11-11T17:39:57.104Z",
+    "status": "sent",
+    "priority": "high",
+    "deduplication_key": "dedup_NEW_OPERATOR_MESSAGE_200101073_ht_200101073_",
+    "retry_count": 0
+  },
+  {
     "notification_id": "ntf_1794318582154_mhy198",
     "event_id": "evt_1794318582154",
     "recipient_user_id": "ht_200101073",

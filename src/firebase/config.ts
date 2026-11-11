@@ -29,19 +29,38 @@ export const db = (() => {
     : undefined;
 
   try {
-    const cacheSettings = {
+    const firestoreSettings = {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
+      ignoreUndefinedProperties: true,
     };
     return dbId
-      ? initializeFirestore(app, cacheSettings, dbId)
-      : initializeFirestore(app, cacheSettings);
+      ? initializeFirestore(app, firestoreSettings, dbId)
+      : initializeFirestore(app, firestoreSettings);
   } catch (err) {
     console.warn('[Firebase] initializeFirestore already called or failed, falling back to getFirestore:', err);
     return dbId ? getFirestore(app, dbId) : getFirestore(app);
   }
 })();
+
+/**
+ * Strips undefined properties recursively so Firestore setDoc/updateDoc never fails
+ */
+export function cleanForFirestore<T extends Record<string, any>>(obj: T): Partial<T> {
+  if (!obj || typeof obj !== 'object') return obj;
+  const cleaned: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        cleaned[key] = cleanForFirestore(value);
+      } else {
+        cleaned[key] = value;
+      }
+    }
+  }
+  return cleaned;
+}
 
 export const auth = getAuth(app);
 

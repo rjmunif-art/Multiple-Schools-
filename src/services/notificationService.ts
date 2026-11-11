@@ -6,7 +6,7 @@ import {
   NotificationPermissionState,
 } from '../types/notifications';
 import { storageService } from './storage';
-import { db } from '../firebase/config';
+import { db, cleanForFirestore } from '../firebase/config';
 import {
   doc,
   setDoc,
@@ -354,7 +354,8 @@ class NotificationService {
 
       // 1. Direct Firestore Persistence (Always succeeds for authenticated users)
       try {
-        await setDoc(doc(db, 'notification_devices', deviceId), deviceRecord, { merge: true });
+        const cleanedDevice = cleanForFirestore(deviceRecord);
+        await setDoc(doc(db, 'notification_devices', deviceId), cleanedDevice, { merge: true });
         console.log('[NotificationService] Device record saved to Firestore:', deviceId);
       } catch (fsErr) {
         console.warn('[NotificationService] Firestore direct device sync notice:', fsErr);
@@ -658,13 +659,15 @@ class NotificationService {
 
     let firestoreSaved = false;
     try {
-      await setDoc(doc(db, 'notifications', notifId), notifRecord);
+      const cleanedRecord = cleanForFirestore(notifRecord);
+      await setDoc(doc(db, 'notifications', notifId), cleanedRecord);
       firestoreSaved = true;
       console.log('[NotificationService] Notification saved directly to Firestore:', notifId);
-    } catch (fsErr) {
-      console.warn('[NotificationService] Firestore notification save notice:', fsErr);
+    } catch (fsErr: any) {
+      console.error('[NotificationService] Firestore notification save notice:', fsErr);
     }
 
+    let serverDelivered = false;
     let serverMessage = '';
     try {
       const res = await fetch('/api/notifications/send', {
@@ -678,23 +681,26 @@ class NotificationService {
 
       const data = await parseJsonSafely(res, 'Send notification');
       if (res.ok && data.success) {
-        return {
-          success: true,
-          message: data.message || 'Notification dispatched successfully to authorized devices.',
-        };
-      } else if (data.message) {
+        serverDelivered = true;
+        serverMessage = data.message || 'Notification dispatched successfully to authorized devices.';
+      } else if (data.message && !data.message.includes('404')) {
         serverMessage = data.message;
       }
     } catch (err: any) {
       console.warn('[NotificationService] Push server dispatch notice:', err?.message);
     }
 
+    if (serverDelivered) {
+      return {
+        success: true,
+        message: serverMessage || 'Notification dispatched successfully to authorized devices.',
+      };
+    }
+
     if (firestoreSaved) {
       return {
         success: true,
-        message: serverMessage
-          ? `Notification dispatched to Head Teacher account. (${serverMessage})`
-          : 'Notification dispatched to Head Teacher account successfully.',
+        message: 'Notification dispatched to Head Teacher account successfully.',
       };
     }
 

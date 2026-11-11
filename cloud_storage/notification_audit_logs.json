@@ -1,5 +1,19 @@
 [
   {
+    "id": "notif_log_1794318582155_m2ct",
+    "action": "notification_dispatched",
+    "timestamp": "2026-11-10T13:49:42.155Z",
+    "notificationId": "ntf_1794318582154_mhy198",
+    "type": "NEW_OPERATOR_MESSAGE",
+    "recipient": "ht_200101073",
+    "role": "headTeacher",
+    "schoolId": "200101073",
+    "title": "Students Data update",
+    "deliveredDevices": 0,
+    "totalDevices": 0,
+    "status": "sent"
+  },
+  {
     "id": "notif_log_1794305467371_4ewa",
     "action": "device_deactivated",
     "timestamp": "2026-11-10T10:11:07.372Z",

@@ -511,6 +511,7 @@ export const Header: React.FC = () => {
           isOpen={isNotifCenterOpen}
           onClose={() => setIsNotifCenterOpen(false)}
           userId={currentUser.id}
+          schoolId={currentUser.schoolId || (activeSchoolId !== 'all' ? activeSchoolId : undefined)}
           onNavigate={(screen, schoolId, recordId) => {
             setCurrentTab(screen);
             if (schoolId && schoolId !== 'all') {

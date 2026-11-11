@@ -23,6 +23,7 @@ interface NotificationCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
+  schoolId?: string;
   onNavigate: (screen: string, schoolId?: string, recordId?: string) => void;
 }
 
@@ -30,6 +31,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   isOpen,
   onClose,
   userId,
+  schoolId,
   onNavigate,
 }) => {
   const [activeFilter, setActiveFilter] = useState<string>('ALL');
@@ -55,6 +57,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     try {
       const res = await notificationService.fetchNotifications(userId, {
         unreadOnly: activeFilter === 'UNREAD',
+        schoolId,
         category:
           activeFilter !== 'ALL' && activeFilter !== 'UNREAD'
             ? activeFilter

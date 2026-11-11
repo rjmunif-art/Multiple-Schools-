@@ -15,6 +15,8 @@ import {
 import { School, UserAccount } from '../../types';
 import { NotificationType } from '../../types/notifications';
 import { notificationService } from '../../services/notificationService';
+import { db } from '../../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 interface SendNotificationModalProps {
   isOpen: boolean;
@@ -59,8 +61,26 @@ export const SendNotificationModal: React.FC<SendNotificationModalProps> = ({
     setStatusMessage(null);
 
     try {
-      // Find recipient user ID: either headTeacherUid or fallback to school-scoped delivery
-      const recipientUid = headTeacherUid || `ht_${currentSchool.id}`;
+      // Find recipient user ID: either headTeacherUid, or query users by schoolId, or fallback to school-scoped delivery
+      let recipientUid = headTeacherUid;
+      if (!recipientUid || recipientUid.startsWith('ht_')) {
+        try {
+          const q = query(
+            collection(db, 'users'),
+            where('role', '==', 'headTeacher'),
+            where('schoolId', '==', currentSchool.id)
+          );
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            recipientUid = snap.docs[0].id;
+          }
+        } catch (queryErr) {
+          console.warn('Could not query HT user UID:', queryErr);
+        }
+      }
+      if (!recipientUid) {
+        recipientUid = `ht_${currentSchool.id}`;
+      }
 
       const res = await notificationService.sendNotification({
         senderUserId: currentUser.id,
@@ -78,6 +98,7 @@ export const SendNotificationModal: React.FC<SendNotificationModalProps> = ({
           senderName: currentUser.name,
           senderRole: 'operator',
           headTeacherName,
+          recipientEmail: currentSchool.headTeacherEmail || '',
           recipientAssignedSchoolId: currentSchool.id,
         },
       });

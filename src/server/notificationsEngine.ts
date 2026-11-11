@@ -142,6 +142,44 @@ export function getActiveDevicesForUser(user_id: string): NotificationDeviceReco
   return devices.filter(d => d.user_id === user_id && d.is_active && d.notifications_enabled);
 }
 
+export function getActiveDevicesForRecipient(
+  recipient_user_id: string,
+  recipient_role?: string,
+  school_id?: string
+): NotificationDeviceRecord[] {
+  const devices = getStoredDevices();
+  return devices.filter(d => {
+    if (!d.is_active || !d.notifications_enabled) return false;
+
+    // 1. Direct user UID match
+    if (d.user_id === recipient_user_id) return true;
+
+    // 2. School-scoped match for head teachers
+    if (
+      recipient_role === 'headTeacher' &&
+      school_id &&
+      d.role === 'headTeacher' &&
+      Array.isArray(d.school_ids) &&
+      d.school_ids.includes(school_id)
+    ) {
+      return true;
+    }
+
+    // 3. Fallback ht_<schoolId> pattern
+    if (
+      recipient_user_id.startsWith('ht_') &&
+      school_id &&
+      d.role === 'headTeacher' &&
+      Array.isArray(d.school_ids) &&
+      d.school_ids.includes(school_id)
+    ) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
 // 3. Storage Helpers for Notifications
 export function getStoredNotifications(): PushNotificationRecord[] {
   if (fs.existsSync(NOTIFICATIONS_PATH)) {
@@ -160,10 +198,25 @@ export function saveStoredNotifications(notifs: PushNotificationRecord[]): void 
 
 export function getUserNotifications(
   user_id: string,
-  options?: { unreadOnly?: boolean; category?: string; schoolId?: string; limit?: number }
+  options?: { unreadOnly?: boolean; category?: string; schoolId?: string; role?: string; limit?: number }
 ): PushNotificationRecord[] {
   const notifs = getStoredNotifications();
-  let filtered = notifs.filter(n => n.recipient_user_id === user_id);
+  let filtered = notifs.filter(n => {
+    // 1. Direct match by recipient UID
+    if (n.recipient_user_id === user_id) return true;
+
+    // 2. Head Teacher match by assigned school ID
+    if (
+      options?.schoolId &&
+      options.schoolId !== 'all' &&
+      n.school_id === options.schoolId &&
+      (n.recipient_role === 'headTeacher' || n.recipient_user_id.startsWith('ht_'))
+    ) {
+      return true;
+    }
+
+    return false;
+  });
 
   if (options?.unreadOnly) {
     filtered = filtered.filter(n => !n.read_at);
@@ -350,8 +403,12 @@ export async function dispatchNotification(
     retry_count: 0,
   };
 
-  // Find all active devices for this user
-  const userDevices = getActiveDevicesForUser(req.recipient_user_id);
+  // Find all active devices for this recipient (direct or school-scoped)
+  const userDevices = getActiveDevicesForRecipient(
+    req.recipient_user_id,
+    req.recipient_role,
+    req.school_id
+  );
   let deliveredCount = 0;
   const deliveryErrors: string[] = [];
 

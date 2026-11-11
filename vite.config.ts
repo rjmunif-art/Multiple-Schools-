@@ -11,8 +11,8 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'firebase-messaging-sw.js', 'sw.js'],
-        manifest: {
+        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'manifest.json', 'firebase-messaging-sw.js', 'sw.js'],
+        manifest: ({
           id: '/',
           name: 'SEF School Operator',
           short_name: 'SEF Operator',
@@ -22,6 +22,7 @@ export default defineConfig(() => {
           display: 'standalone',
           start_url: '/',
           scope: '/',
+          gcm_sender_id: '103953800507',
           icons: [
             {
               src: '/icon.svg',
@@ -36,7 +37,7 @@ export default defineConfig(() => {
               purpose: 'any',
             },
           ],
-        },
+        } as any),
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
